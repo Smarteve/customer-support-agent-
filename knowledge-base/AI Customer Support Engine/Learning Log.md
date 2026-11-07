@@ -5,6 +5,14 @@ tags: [support-engine, learning]
 
 # Learning Log
 
+## 2026-11-07 — Use one project folder
+
+- Kept application code, the visualization, learning notes, Docker, and CI in one Git repository.
+- Removed the nested checkout layout. The checkout itself is now the project folder.
+- A local folder name does not appear as an extra folder on GitHub. GitHub shows files relative to the Git repository root.
+- Moving a local checkout does not change its Git history or remote URL.
+- Related: [[Continuous Integration]] and [[Docker Compose Services]].
+
 ## 2026-11-07 — Project visualization and notebook setup
 
 - Created a map of the proposed architecture and illustrative request walkthroughs.

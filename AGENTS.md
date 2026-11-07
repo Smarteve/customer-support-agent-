@@ -4,6 +4,8 @@ This is an event-driven AI customer support learning project. `docs/design.md` i
 
 Use only `https://github.com/Smarteve/customer-support-agent-.git` for this project. Keep the application, visualization, design, notes, and CI in this checkout. Do not create or publish a separate visualization repository.
 
+The checkout is the project root. Run Git, Docker, and build commands here. `compose.yaml`, `src/`, `docs/`, `knowledge-base/`, and `visualization/` sit directly in this folder. Do not add a nested `repository/` folder.
+
 ## Writing method
 
 The user requests ASD-STE100 for design text and project answers. Use short sentences, active voice, and one topic per paragraph. Define technical terms before use. Use one name for each component. Keep code, API names, and identifiers exact. Do not claim full STE compliance without a complete rules and vocabulary review.

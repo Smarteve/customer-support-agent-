@@ -2,7 +2,7 @@
 
 Date: 7 November 2026
 
-The Git repository is `Smarteve/customer-support-agent-`. The local application checkout is `repository/` because the parent workspace has protected Git metadata.
+The Git repository is `Smarteve/customer-support-agent-`. The checkout is the project root. Application files, the visualization, notes, and CI sit directly in this folder. There is no nested `repository/` folder.
 
 ## Implemented
 

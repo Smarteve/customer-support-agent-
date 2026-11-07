@@ -4,7 +4,7 @@
 
 An event-driven support engine with a Docker-first development setup. The first working slice uses a deterministic fake agent and a mock order API. It needs no paid model credentials.
 
-This project uses one GitHub repository: [Smarteve/customer-support-agent-](https://github.com/Smarteve/customer-support-agent-). Keep application code, the visualization, design files, learning notes, and CI here. The separate `Smarteve/visualization` repository is an earlier copy. Do not use it for new work.
+This project uses one GitHub repository: [Smarteve/customer-support-agent-](https://github.com/Smarteve/customer-support-agent-). Keep application code, the visualization, design files, learning notes, and CI here. The visualization lives in `visualization/` inside this project.
 
 ```text
 Webhook → FastAPI → PostgreSQL commit → Redis/RQ → Worker → Mock order API
@@ -22,13 +22,13 @@ PostgreSQL stores state and ordered run history. Redis has separate RQ and Pub/S
 Install Docker Engine with Compose v2. No host Python installation is required for the application.
 
 ```bash
-git clone https://github.com/Smarteve/customer-support-agent-.git
-cd customer-support-agent-
+git clone https://github.com/Smarteve/customer-support-agent-.git customer-support-agent
+cd customer-support-agent
 cp .env.example .env
 docker compose up --build -d --wait
 ```
 
-The local workspace checkout is `repository/`. Run these commands there if you already have that checkout.
+Run all commands from the project folder. `README.md`, `compose.yaml`, `src/`, and `visualization/` sit directly in that folder. There is no nested `repository/` folder.
 
 | Service | Purpose | Local access |
 | --- | --- | --- |
