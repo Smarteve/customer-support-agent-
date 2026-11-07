@@ -4,6 +4,8 @@
 
 An event-driven support engine with a Docker-first development setup. The first working slice uses a deterministic fake agent and a mock order API. It needs no paid model credentials.
 
+This project uses one GitHub repository: [Smarteve/customer-support-agent-](https://github.com/Smarteve/customer-support-agent-). Keep application code, the visualization, design files, learning notes, and CI here. The separate `Smarteve/visualization` repository is an earlier copy. Do not use it for new work.
+
 ```text
 Webhook → FastAPI → PostgreSQL commit → Redis/RQ → Worker → Mock order API
                                                         │
