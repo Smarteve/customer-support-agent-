@@ -1,0 +1,436 @@
+[
+  {
+    "id": "events",
+    "title": "Event-Driven Architecture",
+    "category": "Foundations",
+    "summary": "Describe what happened, then let background components react to it.",
+    "explanation": "An event is a record of a fact, such as a customer message being received. A task is a command to do work. Our durable event records and task queue serve different purposes: the database preserves what happened, while RQ schedules what should run next.",
+    "example": "FastAPI saves the customer event and a pending run. It then sends the run ID to RQ. A worker loads the saved message and records its progress.",
+    "pitfall": "Calling a queue an event log. A consumed task is not a durable history of every business event.",
+    "question": "Why put processing behind a queue?",
+    "answer": "To separate HTTP acceptance from slow model work, absorb bounded bursts, and scale workers independently. This introduces eventual consistency, retries, and ordering decisions.",
+    "related": [
+      "outbox",
+      "queue",
+      "delivery"
+    ],
+    "source": "https://microservices.io/patterns/data/transactional-outbox.html",
+    "sourceLabel": "Transactional messaging pattern"
+  },
+  {
+    "id": "webhooks",
+    "title": "Webhook Authentication",
+    "category": "Foundations",
+    "summary": "Verify who sent the event before treating it as trusted input.",
+    "explanation": "We own the receiving FastAPI endpoint. A source platform or customer backend sends an HTTP POST to it. During that request, the source is the HTTP client and FastAPI is the HTTP server. Our simulator acts as the source in local development. The receiver checks the signature, timestamp, identity, and event ID.",
+    "example": "An external support platform sends a customer-message event to our POST /webhooks/support URL. We save the event and pending run in PostgreSQL, commit, then submit its run ID to Redis. These are separate storage operations.",
+    "pitfall": "Verifying a reserialized body rather than the exact signed bytes, or trusting a customer identity asserted by an unauthorized sender.",
+    "question": "Does one webhook request make the PostgreSQL and Redis writes one transaction?",
+    "answer": "No. One HTTP handler can call both systems, but the PostgreSQL transaction covers only database writes. Enqueueing happens after commit. The database and queue can therefore fail independently.",
+    "related": [
+      "idempotency",
+      "isolation",
+      "events"
+    ],
+    "source": "https://docs.github.com/en/webhooks/about-webhooks",
+    "sourceLabel": "GitHub Docs · webhook sender and receiver"
+  },
+  {
+    "id": "outbox",
+    "title": "Transactional Outbox",
+    "category": "Reliability",
+    "summary": "A later option for reliable publication of saved work.",
+    "explanation": "The simple design saves a pending run, then submits its ID directly to RQ. A crash between these writes can leave unscheduled work. An outbox is a later option: save a publication request in the same transaction, then let a dispatcher publish it.",
+    "example": "In a later revision, PostgreSQL could commit a customer message and outbox row together. A dispatcher would publish the saved job after Redis recovers. This process is not part of the initial component diagram.",
+    "pitfall": "Assuming that saving first makes the Redis write atomic. A manual retry handles the initial gap; automatic recovery requires additional design and implementation.",
+    "question": "Do we need an outbox to start the project?",
+    "answer": "No. Start with database-first submission and an explicit retry path. The initial version does not guarantee automatic scheduling recovery. Add an outbox or a pending-run scanner at the reliability milestone.",
+    "related": [
+      "lifecycle",
+      "delivery",
+      "recovery"
+    ],
+    "source": "https://microservices.io/patterns/data/transactional-outbox.html",
+    "sourceLabel": "Chris Richardson · transactional outbox"
+  },
+  {
+    "id": "queue",
+    "title": "Task Queues and RQ",
+    "category": "Foundations",
+    "summary": "Move slow work out of the web request and schedule it for workers.",
+    "explanation": "RQ schedules saved run IDs for workers. A normal worker executes one job at a time. Redis also supplies Pub/Sub for live progress, but that is a separate interface. RQ jobs and Pub/Sub notices have different purposes.",
+    "example": "A job contains run_42. The worker loads its message and verified identity from PostgreSQL, saves running state, and executes bounded work. Approval waits release the worker.",
+    "pitfall": "Assuming async model calls let a normal RQ worker execute many unrelated jobs at once. Add workers for job concurrency.",
+    "question": "Why not run the model inside the webhook handler?",
+    "answer": "Model latency would delay the HTTP response. Saving first preserves the message. The queue moves execution to workers. Separate database and queue writes still need a retry or later automatic recovery.",
+    "related": [
+      "events",
+      "pubsub",
+      "backpressure"
+    ],
+    "source": "https://python-rq.org/docs/workers/",
+    "sourceLabel": "RQ · workers"
+  },
+  {
+    "id": "delivery",
+    "title": "At-Least-Once Delivery",
+    "category": "Reliability",
+    "summary": "Expect the same work to be attempted more than once.",
+    "explanation": "The design deliberately tolerates repeated enqueueing and recovery attempts. A worker may finish an external action and die before acknowledging it. Repeated execution is therefore a normal case to handle. Durable state and reconciliation provide recovery within configured retry budgets.",
+    "example": "A worker crashes after issuing a mock refund. Recovery receives the same logical action and checks the provider result before proceeding.",
+    "pitfall": "Promising end-to-end exactly-once behavior because the queue assigned a unique job ID.",
+    "question": "How can repeated delivery still produce one refund?",
+    "answer": "Separate delivery from effect semantics. Persist a stable logical action ID, pass it as the provider idempotency key, and reconcile uncertain outcomes.",
+    "related": [
+      "idempotency",
+      "outbox",
+      "recovery"
+    ],
+    "source": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/",
+    "sourceLabel": "AWS Builders’ Library · safe retries"
+  },
+  {
+    "id": "idempotency",
+    "title": "Idempotency",
+    "category": "Reliability",
+    "summary": "Repeat the same logical operation without repeating its business effect.",
+    "explanation": "Give each logical action a stable key and bind it to an arguments hash. Matching retries return the recorded result; reuse with different arguments is rejected. The key survives worker attempts and approval continuations. It must also be enforced by the service that owns the external effect.",
+    "example": "Refund action refund_42 runs twice with the same payment, amount, and currency. The mock payments API returns the original refund instead of creating another.",
+    "pitfall": "Generating a fresh key on every retry, or treating two intentionally different refunds as the same action just because their amounts match.",
+    "question": "What if the refund API times out?",
+    "answer": "The outcome is unknown. Look it up by the existing operation key, then retry only under that same identity. Escalate if the provider cannot safely resolve ambiguity.",
+    "related": [
+      "delivery",
+      "approval",
+      "leases"
+    ],
+    "source": "https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/",
+    "sourceLabel": "AWS Builders’ Library · idempotent APIs"
+  },
+  {
+    "id": "agent",
+    "title": "Agent Tool-Use Loop",
+    "category": "Agents",
+    "summary": "Let the model propose a next step, then execute it through controlled code.",
+    "explanation": "The runtime assembles context, requests structured output, validates a tool call, executes it, and returns the observed result to the model. It repeats within step, time, token, and cost budgets. This adapts the ReAct pattern while recording observable decisions rather than private chain-of-thought.",
+    "example": "The model requests get_order, observes shipment data, and produces a supported answer. It cannot declare an order delivered without evidence.",
+    "pitfall": "Giving the model unrestricted execution or allowing the loop to run until the provider budget is exhausted.",
+    "question": "What makes an agent different from one model call?",
+    "answer": "An agent selects actions based on intermediate observations. The surrounding runtime supplies state, controls, tools, and stopping conditions.",
+    "related": [
+      "policy",
+      "recovery",
+      "evaluation"
+    ],
+    "source": "https://arxiv.org/abs/2210.03629",
+    "sourceLabel": "ReAct · original research paper"
+  },
+  {
+    "id": "policy",
+    "title": "Policy Enforcement",
+    "category": "Agents",
+    "summary": "Apply access and business rules in code before a tool runs.",
+    "explanation": "The model proposes an action. The worker checks its tool name, arguments, customer ownership, tenant, and policy before execution. A refund also needs exact operator approval. These checks stay inside the worker; they do not require a separate diagram component.",
+    "example": "A customer asks for a £25 refund. The gateway checks the payment and current refund policy. If approval is missing, the run saves its proposal and pauses. The payment API receives no refund request.",
+    "pitfall": "Putting a rule only in the prompt. Model output does not establish permission.",
+    "question": "Does removing the Tool Gateway box remove authorization?",
+    "answer": "No. The checks remain in worker functions and tool wrappers. The diagram removes an implementation detail. Every model tool request still requires validation, access checks, and applicable business rules.",
+    "related": [
+      "agent",
+      "approval",
+      "isolation"
+    ],
+    "source": "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html",
+    "sourceLabel": "OWASP · authorization guidance"
+  },
+  {
+    "id": "approval",
+    "title": "Human-in-the-Loop Approval",
+    "category": "Agents",
+    "summary": "Pause consequential work until an authorized person approves the exact action.",
+    "explanation": "Persist a proposed action and release the worker. Bind approval to its customer, payment, amount, currency, policy version, and arguments hash. An authorized decision creates continuation work. On resumption, recheck policy and current payment state.",
+    "example": "A synthetic £25 refund enters waiting_approval. Approval schedules a continuation; changing the amount requires a new proposal and decision.",
+    "pitfall": "Leaving a worker blocked while a person decides, or treating approval as permission for any later action on the ticket.",
+    "question": "Why recheck eligibility after approval?",
+    "answer": "Payment or policy state may have changed while the run was paused. Approval applies to a specific proposed action, not stale assumptions.",
+    "related": [
+      "policy",
+      "recovery",
+      "idempotency"
+    ],
+    "source": "https://cheatsheetseries.owasp.org/cheatsheets/Transaction_Authorization_Cheat_Sheet.html",
+    "sourceLabel": "OWASP · transaction authorization"
+  },
+  {
+    "id": "recovery",
+    "title": "Checkpointing and Recovery",
+    "category": "Reliability",
+    "summary": "Resume from recorded progress and reconcile anything with an uncertain outcome.",
+    "explanation": "Save message references, tool results, pending actions, and run progress between steps. The initial version provides an authorized retry path. A later recovery process can detect old pending runs and expired worker ownership automatically.",
+    "example": "After a worker restart, the runtime sees a completed order lookup and an uncertain refund. It reuses the lookup and reconciles the refund by operation key.",
+    "pitfall": "Assuming the database detects and retries a crashed worker by itself. A crash can leave running state until a person or recovery process checks ownership.",
+    "question": "Which state is required to resume safely?",
+    "answer": "The logical action identities, durable results, input watermark, policy/model versions, current run state, and ownership token—not just the latest chat transcript.",
+    "related": [
+      "lifecycle",
+      "leases",
+      "idempotency"
+    ],
+    "source": "https://python-rq.org/docs/exceptions/",
+    "sourceLabel": "RQ · exceptions and retries"
+  },
+  {
+    "id": "leases",
+    "title": "Leases and Fencing Tokens",
+    "category": "Reliability",
+    "summary": "Give a worker temporary ownership and reject writes from stale owners.",
+    "explanation": "A lease expires unless its owner renews it. A new owner increments a monotonic fencing token. Every state write checks the current token, so an old worker cannot commit after a replacement takes over. External services also need idempotency because a fence cannot cancel a request already sent.",
+    "example": "Worker A stalls with token 7. Worker B acquires token 8 after expiry. PostgreSQL rejects A’s checkpoint with token 7.",
+    "pitfall": "Relying on a lock timeout alone. The old process may wake up after its lock expires and still believe it owns the work.",
+    "question": "Does fencing prevent duplicate external refunds?",
+    "answer": "Only if the external resource enforces the token or another equivalent constraint. Our mock payments API uses stable action idempotency in addition to application fencing.",
+    "related": [
+      "recovery",
+      "idempotency",
+      "delivery"
+    ],
+    "source": "https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html",
+    "sourceLabel": "Martin Kleppmann · distributed locking"
+  },
+  {
+    "id": "sse",
+    "title": "Server-Sent Events",
+    "category": "Foundations",
+    "summary": "Stream saved run events from FastAPI to the browser after Redis notices.",
+    "explanation": "The worker commits state and run events in PostgreSQL, then publishes a Redis Pub/Sub notice. FastAPI receives the notice and reads saved events after each browser cursor. It sends those records through SSE. The normal live path uses no database polling.",
+    "example": "The worker saves event 13 and publishes its run ID and sequence. FastAPI receives the notice, reads event 13 from PostgreSQL, and streams it to React. After reconnection, the API replays any missing saved events.",
+    "pitfall": "Treating a live notification channel as durable storage, or putting authentication tokens in stream query strings.",
+    "question": "How does SSE differ from Redis Pub/Sub?",
+    "answer": "Redis Pub/Sub signals subscribed FastAPI processes. SSE carries event records from FastAPI to a connected browser. PostgreSQL stores the history for replay. The browser never connects directly to Redis.",
+    "related": [
+      "pubsub",
+      "lifecycle",
+      "observability"
+    ],
+    "source": "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events",
+    "sourceLabel": "MDN · using server-sent events"
+  },
+  {
+    "id": "isolation",
+    "title": "Tenant Isolation",
+    "category": "Security",
+    "summary": "Constrain every read, write, tool call, and subscription to its authorized tenant.",
+    "explanation": "Derive tenant identity from verified credentials. Apply tenant predicates in repositories and enforce relationship constraints. PostgreSQL row-level security adds defense in depth when configured for the actual API and worker roles; privileged and owner bypass rules must be understood and tested.",
+    "example": "A ticket ID from tenant B is pasted into tenant A’s dashboard. The REST route, SSE subscription, and order tool all reject access.",
+    "pitfall": "Protecting the UI while background workers or direct ID lookups can still cross tenant boundaries.",
+    "question": "Is a tenant_id column sufficient?",
+    "answer": "No. Queries, relationships, authorization, database roles, streams, and tests must all enforce the boundary.",
+    "related": [
+      "webhooks",
+      "policy",
+      "sse"
+    ],
+    "source": "https://www.postgresql.org/docs/current/ddl-rowsecurity.html",
+    "sourceLabel": "PostgreSQL · row security policies"
+  },
+  {
+    "id": "observability",
+    "title": "Traces and Observability",
+    "category": "Operations",
+    "summary": "Connect an accepted message to model calls, tool effects, and its final delivery.",
+    "explanation": "Pass a trace ID through FastAPI, RQ submission, worker execution, model calls, tools, and delivery. Save progress events in PostgreSQL. Redis Pub/Sub triggers live SSE delivery. Saved events describe progress; metrics and optional spans describe aggregate behavior and timing.",
+    "example": "A slow ticket shows 20 seconds of queue wait and 2 seconds of model work. The useful fix is worker capacity or admission control, not a different prompt.",
+    "pitfall": "Logging raw customer and payment data, storing private model reasoning, or using run IDs as high-cardinality metric labels.",
+    "question": "Which latency should the dashboard report?",
+    "answer": "Separate webhook acceptance, queue wait, active execution, human wait, and outbound delivery. A single total hides the bottleneck.",
+    "related": [
+      "sse",
+      "evaluation",
+      "backpressure"
+    ],
+    "source": "https://opentelemetry.io/docs/concepts/signals/",
+    "sourceLabel": "OpenTelemetry · signals"
+  },
+  {
+    "id": "evaluation",
+    "title": "Agent Evaluation",
+    "category": "Agents",
+    "summary": "Test whether the agent achieves the right outcome within policy and resource limits.",
+    "explanation": "Use deterministic fake-model integration tests for orchestration and faults, plus a separate live-model scenario suite for behavior. Assert concrete effects, evidence, ownership, approval requirements, and budgets. Record dataset, model, prompt, tool, and policy versions.",
+    "example": "A refund scenario passes only if the right customer and amount were approved and one refund was created. Fluent wording alone cannot make it pass.",
+    "pitfall": "Using exact response text as the only assertion, or letting a model judge replace deterministic checks for financial effects.",
+    "question": "How do you compare two prompts?",
+    "answer": "Run the same versioned scenarios, compare task success and prohibited actions alongside latency and cost, inspect regressions, and publish sample size and failure cases.",
+    "related": [
+      "agent",
+      "policy",
+      "observability"
+    ],
+    "source": "https://arxiv.org/abs/2210.03629",
+    "sourceLabel": "ReAct · example of evaluating agent behavior"
+  },
+  {
+    "id": "backpressure",
+    "title": "Backpressure and Retry Budgets",
+    "category": "Operations",
+    "summary": "Bound incoming work and retries so overload does not amplify itself.",
+    "explanation": "Queueing absorbs bursts but cannot create sustained processing capacity. Apply tenant quotas, queue-age limits, provider concurrency controls, and bounded retry budgets. Retry transient failures with capped backoff and jitter; avoid retries at every layer multiplying the load.",
+    "example": "Four workers taking 20 seconds per run provide roughly 0.2 runs per second before overhead. Accepting 10 per second indefinitely would grow the backlog.",
+    "pitfall": "Reporting fast webhook acknowledgment as proof that the system can resolve requests at the same sustained rate.",
+    "question": "What should happen during overload?",
+    "answer": "Reject work before durable acknowledgment when admission limits are reached, preserve accepted work, and show queue age and recovery progress.",
+    "related": [
+      "queue",
+      "observability",
+      "delivery"
+    ],
+    "source": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+    "sourceLabel": "AWS Builders’ Library · retry budgets"
+  },
+  {
+    "id": "tool-gateway",
+    "title": "Tool Gateway",
+    "category": "Agents",
+    "summary": "An optional code organization, omitted from the simple architecture.",
+    "explanation": "A tool gateway can group validation, authorization, and tool execution. The current design keeps those checks inside worker functions. It does not require a separately named gateway module or service.",
+    "example": "The worker checks execute_refund arguments, customer ownership, current policy, and exact approval before it calls the mock payment API.",
+    "pitfall": "Checking access when a tool is listed, but omitting checks when the tool executes. Payment state and approval can change.",
+    "question": "Why did we remove this box from the diagram?",
+    "answer": "The first diagram should show the main processes, storage, and external dependencies. Tool checks are internal worker behavior. A named gateway is a later implementation choice, not an initial architectural requirement.",
+    "related": [
+      "policy",
+      "approval",
+      "idempotency"
+    ],
+    "source": "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html",
+    "sourceLabel": "OWASP · authorization checks"
+  },
+  {
+    "id": "writing",
+    "title": "ASD-STE100 Writing Rules",
+    "category": "Foundations",
+    "summary": "Use short, direct sentences and fixed technical terms.",
+    "explanation": "ASD-STE100 includes writing rules and a controlled dictionary. Our design uses short sentences, active voice, and one topic per paragraph. A technical glossary defines the software terms. A complete dictionary review remains open.",
+    "example": "Before: The policy gateway facilitates deterministic authorization enforcement. After: The worker checks whether the action is permitted.",
+    "pitfall": "Calling plain English fully STE-compliant without a vocabulary and rules review. Clear text alone does not establish compliance.",
+    "question": "How does controlled language improve a system design?",
+    "answer": "It makes responsibilities and conditions explicit. Use one component name throughout the document. State who does each action. Describe the failure case separately from the normal sequence.",
+    "related": [
+      "outbox",
+      "tool-gateway",
+      "observability"
+    ],
+    "source": "https://www.asd-ste100.org/STE_faq.html",
+    "sourceLabel": "ASD-STE100 · official questions and answers"
+  },
+  {
+    "id": "lifecycle",
+    "title": "Job Lifecycle and Run Events",
+    "category": "Foundations",
+    "summary": "Save current state and a separate ordered history throughout execution.",
+    "explanation": "FastAPI saves input before RQ submission. The worker saves its start, progress, and final outcome in short PostgreSQL transactions. After each commit, it publishes a Redis notice. FastAPI reads saved events on notice or reconnect and streams them through SSE.",
+    "example": "runs.status is running while run_events contains run.started and tool.completed. A Redis Pub/Sub notice identifies the latest saved sequence. FastAPI sends all missing saved records to the browser.",
+    "pitfall": "Storing only the latest status, or assuming dashboard updates happen only when a webhook arrives. A timeline needs saved intermediate events and an independent status subscription.",
+    "question": "Why write to PostgreSQL at both the start and end of a job?",
+    "answer": "The start record shows active ownership and attempt time. The final record preserves the outcome. Intermediate events explain what happened between them. RQ coordinates execution; PostgreSQL stores application status and history.",
+    "related": [
+      "queue",
+      "pubsub",
+      "sse",
+      "observability"
+    ],
+    "source": "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events",
+    "sourceLabel": "MDN · stream saved application events with SSE"
+  },
+  {
+    "id": "polling",
+    "title": "Polling and Database Notifications",
+    "category": "Foundations",
+    "summary": "Alternative ways to detect changes; the current design uses Redis Pub/Sub.",
+    "explanation": "Polling queries repeatedly to detect changes. PostgreSQL LISTEN/NOTIFY uses an explicit database signal. Both are useful alternatives. Our current live path uses worker-published Redis notices after commit, followed by an event read and SSE delivery.",
+    "example": "A polling design queries for event sequences above 12 once per second. A Redis Pub/Sub design waits for a published notice, then reads those saved events. We selected the Redis design.",
+    "pitfall": "Assuming a database update automatically sends an HTTP webhook, SSE event, or Redis notice. A component must explicitly publish a signal or query for changes.",
+    "question": "Do we still poll PostgreSQL in the current design?",
+    "answer": "No. Read PostgreSQL on connection, reconnection, or a Redis progress notice. Subscribe before replay so that work completed during the replay remains discoverable.",
+    "related": [
+      "pubsub",
+      "sse",
+      "lifecycle"
+    ],
+    "source": "https://www.postgresql.org/docs/current/sql-notify.html",
+    "sourceLabel": "PostgreSQL · NOTIFY behavior and transaction timing"
+  },
+  {
+    "id": "pubsub",
+    "title": "Redis PubSub Streaming",
+    "category": "Foundations",
+    "summary": "Commit each progress event, publish a Redis notice, and stream saved records through SSE.",
+    "explanation": "The worker commits state and history in PostgreSQL before it publishes a run ID and sequence to Redis. Subscribed FastAPI processes receive the notice. Each process reads saved events for its authorized browser connections and sends them through SSE.",
+    "example": "Event 13 commits. The worker publishes run_42 and sequence 13. FastAPI reads all rows after the browser cursor, then streams them in order. A reconnect uses the same saved history.",
+    "pitfall": "Treating Redis Pub/Sub as replayable history. It provides at-most-once delivery. A disconnected subscriber misses notices. A crash between database commit and publish can also leave a saved step without a live notice.",
+    "question": "How do we prevent missing a step during stream connection?",
+    "answer": "Attach a bounded local buffer and confirm the Redis subscription before reading saved history. Replay after the last SSE event ID, then process buffered notices. Ignore duplicate sequences. No routine database polling is needed.",
+    "related": [
+      "sse",
+      "lifecycle",
+      "queue",
+      "outbox"
+    ],
+    "source": "https://redis.io/docs/latest/develop/pubsub/",
+    "sourceLabel": "Redis · Pub/Sub channels and delivery semantics"
+  },
+  {
+    "id": "docker",
+    "title": "Docker Compose Services",
+    "category": "Operations",
+    "summary": "Run the API, worker, storage, and mock services on one local network.",
+    "explanation": "Compose defines containers, environment settings, networks, volumes, and startup dependencies. A running container is not necessarily ready. Our API and worker wait for healthy storage and successful migrations.",
+    "example": "compose.yaml starts PostgreSQL and Redis. The migration service runs once. The API and worker start after migration completion. Redis and PostgreSQL have no published host ports.",
+    "pitfall": "Assuming depends_on without a readiness condition waits for the database schema. Another mistake is using localhost for another container; use the service name.",
+    "question": "Why are RQ and the API separate containers?",
+    "answer": "They run separate processes with different responsibilities. They share an application image and network. Each can restart or scale without running slow jobs inside HTTP requests.",
+    "related": [
+      "queue",
+      "pubsub",
+      "migrations"
+    ],
+    "source": "https://docs.docker.com/compose/how-tos/startup-order/",
+    "sourceLabel": "Docker · startup order and readiness"
+  },
+  {
+    "id": "ci",
+    "title": "Continuous Integration",
+    "category": "Operations",
+    "summary": "Check each repository change through a repeatable container build and test workflow.",
+    "explanation": "GitHub Actions runs the CI workflow after a push or pull request. Our job builds the runtime and test images, checks Python code, runs tests against real services, and verifies migration consistency.",
+    "example": ".github/workflows/ci.yml runs the same Compose tests used locally. The tests exercise signed webhook acceptance, RQ execution, Pub/Sub wake-ups, and SSE replay.",
+    "pitfall": "Passing unit tests while never building the Docker image or exercising the database and queue. CI must verify the way the application actually runs.",
+    "question": "Why use the same containers locally and in CI?",
+    "answer": "It reduces differences in Python packages, service versions, and networking. A committed lockfile and Dockerfile make dependency installation repeatable. Real integration tests still need isolated service data.",
+    "related": [
+      "docker",
+      "evaluation",
+      "migrations"
+    ],
+    "source": "https://docs.github.com/en/actions/about-github-actions/understanding-github-actions",
+    "sourceLabel": "GitHub · workflow, job, and step concepts"
+  },
+  {
+    "id": "migrations",
+    "title": "Database Migrations",
+    "category": "Foundations",
+    "summary": "Apply versioned schema changes before services use the database.",
+    "explanation": "Alembic records schema revisions and applies them in order. The first migration creates tenant-scoped runs and ordered run events. Compose runs alembic upgrade head before API and worker startup.",
+    "example": "migrations/versions/0001_run_history.py creates the tables, unique constraints, and foreign keys. The alembic check command reports whether model changes need another revision.",
+    "pitfall": "Relying on create_all at application startup. That does not provide an explicit history of schema changes or a controlled upgrade path.",
+    "question": "Does an empty alembic check prove a migration is safe?",
+    "answer": "No. It checks model/schema consistency. Review changes for data loss, locking, compatibility, and required data conversion. Our initial validation reported no new upgrade operations.",
+    "related": [
+      "docker",
+      "lifecycle",
+      "ci"
+    ],
+    "source": "https://alembic.sqlalchemy.org/en/latest/tutorial.html",
+    "sourceLabel": "Alembic · migration environment and revisions"
+  }
+]

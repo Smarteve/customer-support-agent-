@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore the architecture, request flows, and learning notes for an event-driven AI customer support engine.">
+  <meta name="theme-color" content="#f7f6f2">
+  <title>Support Engine · Project Explorer</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="data.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <aside class="sidebar">
+    <a class="brand" href="#architecture" aria-label="Support Engine home"><span class="brand-mark">s<span>e</span></span><span>Support Engine<small>THE PROJECT NOTEBOOK</small></span></a>
+    <div class="project-label">EXPLORE THE PROJECT</div>
+    <nav aria-label="Project sections">
+      <a href="#architecture" data-page="architecture"><span class="nav-icon">◈</span> System map <span class="nav-no">01</span></a>
+      <a href="#walkthrough" data-page="walkthrough"><span class="nav-icon">↳</span> Request walkthrough <span class="nav-no">02</span></a>
+      <a href="#knowledge" data-page="knowledge"><span class="nav-icon">▤</span> Knowledge library <span class="nav-no">03</span></a>
+      <a href="#roadmap" data-page="roadmap"><span class="nav-icon">☷</span> Build roadmap <span class="nav-no">04</span></a>
+    </nav>
+    <div class="sidebar-note"><span class="eyebrow">BUILD TO UNDERSTAND</span><p>Follow an event.<br>Question a decision.<br>Connect what you learn.</p></div>
+    <div class="vault-card"><span class="vault-icon">◇</span><strong>Your second brain</strong><p><span data-concept-count></span> project concept notes<br>linked to your Obsidian vault.</p><a data-obsidian="Start Here">Open project notebook ↗</a><small>Opens the local Obsidian app</small></div>
+    <div class="sidebar-footer"><span class="status-dot"></span> Design stage <span>v0.4</span></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><div>Projects <span>/</span> AI Customer Support <span>/</span> <strong id="breadcrumb">System map</strong></div><a href="design.md" download>Design document <span>↗</span></a></header>
+    <main id="main" tabindex="-1">
+      <section id="page-architecture" class="page">
+        <div class="page-head"><div><div class="eyebrow"><span class="small-dash"></span> THE BIG PICTURE</div><h1>Follow the work.</h1><p class="lede">One customer message. Eight main components. Saved progress at each stage.<br>Explore the pieces, and the decisions that connect them.</p></div><div class="design-badge"><span class="status-dot"></span> INTERACTIVE DESIGN<span>Proposed architecture · not live services</span></div></div>
+        <div class="map-layout">
+          <section class="panel map-panel" aria-label="Interactive architecture diagram"><div class="panel-heading"><div><h2>The system, connected</h2><p>Select a box. Redis carries RQ jobs and Pub/Sub notices through separate interfaces.</p></div><span class="mono muted">8 COMPONENTS</span></div><div class="diagram-scroll"><svg id="architecture-map" viewBox="0 0 1000 590" role="group" aria-label="Architecture map. Use Tab to select each component."></svg></div><div class="map-legend"><span><i class="legend-dot service"></i> Application</span><span><i class="legend-dot storage"></i> Durable state</span><span><i class="legend-dot external"></i> Model / interface</span><span class="legend-hint">↗ Click a box to explore</span></div></section>
+          <aside class="panel inspector" id="inspector" aria-label="Selected component details" aria-live="polite"></aside>
+        </div>
+        <div class="principles"><div><span>01 / ACCEPT DURABLY</span><h3>Save before you schedule.</h3><p>A committed event survives a queue outage.</p></div><div><span>02 / ACT WITH BOUNDARIES</span><h3>The model proposes. Code decides.</h3><p>Tools enforce ownership, policy, and approval.</p></div><div><span>03 / MAKE IT INSPECTABLE</span><h3>Every step leaves a trail.</h3><p>Commit progress, publish a notice, then stream through SSE.</p></div></div>
+        <a class="next-section" href="#walkthrough"><span>NOW SEE IT IN MOTION <strong>Walk through a customer request</strong></span><span>↗</span></a>
+      </section>
+      <section id="page-walkthrough" class="page" hidden>
+        <div class="page-head"><div><div class="eyebrow"><span class="small-dash"></span> THE REQUEST JOURNEY</div><h1>Watch an event unfold.</h1><p class="lede">Step through the happy path, an approval, or a repeated delivery.<br>Illustrative simulation. No model calls or financial actions.</p></div></div>
+        <div class="scenario-picker" role="group" aria-label="Choose a simulated scenario"><button data-scenario="order" class="selected"><span>01</span> Where is my order?</button><button data-scenario="refund"><span>02</span> A refund with approval</button><button data-scenario="duplicate"><span>03</span> The same refund, twice</button></div>
+        <div class="journey-layout"><section class="panel journey-main"><div class="panel-heading"><div><h2 id="scenario-title"></h2><p id="scenario-subtitle"></p></div><span class="tag">SIMULATION</span></div><div class="progress-track"><div id="journey-progress"></div></div><div id="journey-content" aria-live="polite"></div><div class="journey-controls"><button id="restart" class="text-button">↺ Restart</button><div><button id="play" class="button secondary">Play journey</button><button id="next" class="button primary">Next step →</button></div></div></section><aside class="panel trace-panel"><div class="panel-heading"><div><h2>Execution timeline</h2><p>Illustrative saved steps and live notices</p></div><span class="trace-dot"></span></div><ol id="trace-list"></ol></aside></div>
+        <div class="learning-callout"><span>◇</span><div><strong>Learn it where it happens.</strong><p>Each step links to the concept behind the behavior. Open a note, add your own explanation, and return when you build it.</p></div><a href="#knowledge">Explore the library ↗</a></div>
+      </section>
+      <section id="page-knowledge" class="page" hidden>
+        <div class="page-head"><div><div class="eyebrow"><span class="small-dash"></span> YOUR CONNECTED KNOWLEDGE</div><h1>Keep what you learn.</h1><p class="lede">Small explanations. Concrete examples. Connected ideas.<br>A starting point for your Obsidian notebook, and your interviews.</p></div><a href="obsidian-notes.zip" download class="button secondary">↓ Download notebook</a></div>
+        <div class="library-toolbar"><label class="search"><span>⌕</span><input id="concept-search" type="search" placeholder="Search concepts, examples, or questions…" aria-label="Search concepts"></label><div class="review-counter"><span id="review-count">0</span> / <span data-concept-count></span> reviewed in this browser</div></div><div id="category-filters" class="filters" role="group" aria-label="Filter concepts by category"></div>
+        <div class="library-layout"><div><div id="result-count" class="result-count" aria-live="polite"></div><div id="concept-list" class="concept-list"></div></div><article class="panel note-preview" id="note-preview" aria-live="polite"></article></div>
+        <p class="integration-note">Obsidian links open notes installed in your local vault. This page does not read vault edits or sync in the background. Review marks are saved only in this browser. <a href="https://obsidian.md/help/uri" target="_blank" rel="noopener noreferrer">How Obsidian links work ↗</a></p>
+      </section>
+      <section id="page-roadmap" class="page" hidden>
+        <div class="page-head"><div><div class="eyebrow"><span class="small-dash"></span> FROM DESIGN TO DEMO</div><h1>Build one complete path.</h1><p class="lede">Six milestones. Each adds a capability you can demonstrate.<br>Start with durable execution, then give the agent its tools.</p></div><span class="tag">ALL MILESTONES PLANNED</span></div>
+        <div class="roadmap-intro"><span>START HERE</span><p>Webhook → PostgreSQL → RQ → worker → saved state and response.<br><strong>A runnable foundation before a live model enters the picture.</strong></p></div><div id="milestones"></div>
+        <div class="learning-callout"><span>↗</span><div><strong>A portfolio that explains its decisions.</strong><p>Demonstrate an order inquiry, an approved refund, a denied request, and a crash with recovery. Show the same inspectable timeline for each.</p></div><a data-obsidian="Learning Log">Capture a learning session ↗</a></div>
+      </section>
+      <footer class="page-footer"><span>SUPPORT ENGINE / PROJECT EXPLORER</span><span>Designed to build. Built to learn.</span><a data-obsidian="Start Here">Notebook ↗</a></footer>
+    </main>
+  </div>
+  <div id="toast" role="status" class="toast" hidden></div>
+</body>
+</html>
