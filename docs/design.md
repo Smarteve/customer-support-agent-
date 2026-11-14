@@ -10,7 +10,7 @@ Start with the main components. Add reliability mechanisms after the basic reque
 
 The first release answers order questions and handles approved mock refunds. All customer data and financial actions are synthetic.
 
-The Docker starter implements saved order inquiries and Pub/Sub-to-SSE updates. Refunds, real model calls, and the React operator dashboard remain planned.
+Current learning baseline: only the command-line simulator is implemented. The receiving API, database, queue, worker, mock APIs, model calls, and dashboard described below remain planned. The previous backend starter is available in Git history.
 
 See [implementation status](implementation-status.md) for tested scope. The HTML explorer still shows proposed behavior.
 

@@ -2,120 +2,77 @@
 
 [![CI](https://github.com/Smarteve/customer-support-agent-/actions/workflows/ci.yml/badge.svg)](https://github.com/Smarteve/customer-support-agent-/actions/workflows/ci.yml)
 
-An event-driven support engine with a Docker-first development setup. The first working slice uses a deterministic fake agent and a mock order API. It needs no paid model credentials.
+This is an event-driven customer support learning project. We will build the backend one step at a time. The command-line event simulator is implemented. The receiving API, database, queue, worker, and mock services remain planned.
 
-This project uses one GitHub repository: [Smarteve/customer-support-agent-](https://github.com/Smarteve/customer-support-agent-). Keep application code, the visualization, design files, learning notes, and CI here. The visualization lives in `visualization/` inside this project.
+Keep all project files in [this repository](https://github.com/Smarteve/customer-support-agent-). Run commands from the checkout root. There is no nested `repository/` folder.
 
-```text
-Webhook → FastAPI → PostgreSQL commit → Redis/RQ → Worker → Mock order API
-                                                        │
-                                       save progress ←──┤
-                                                        └─→ Redis Pub/Sub
-                                                               │
-                                                    FastAPI SSE → Client
-```
+## Event simulator
 
-PostgreSQL stores state and ordered run history. Redis has separate RQ and Pub/Sub roles. FastAPI subscribes before replay and sends saved records through SSE. The stream does not poll the database.
-
-## Start with Docker
-
-Install Docker Engine with Compose v2. No host Python installation is required for the application.
+Install Python 3.12 or later and uv. Then run:
 
 ```bash
-git clone https://github.com/Smarteve/customer-support-agent-.git customer-support-agent
-cd customer-support-agent
+uv sync
 cp .env.example .env
-docker compose up --build -d --wait
+uv run python -m support_engine.simulator --help
 ```
 
-Run all commands from the project folder. `README.md`, `compose.yaml`, `src/`, and `visualization/` sit directly in that folder. There is no nested `repository/` folder.
-
-| Service | Purpose | Local access |
-| --- | --- | --- |
-| `api` | Webhooks, run status, retry, and SSE | [API documentation](http://localhost:8080/docs) |
-| `worker` | Real RQ worker running the fake agent | Internal network |
-| `postgres` | Persistent run state and event history | Internal network |
-| `redis` | RQ job queue and Pub/Sub notifications | Internal network |
-| `mock-api` | Customer-scoped synthetic order lookup | Internal network |
-| `explorer` | Existing interactive design reference | [Project explorer](http://localhost:8081) |
-| `migrate` | One-time database migrations | Runs before API and worker |
-
-The explorer describes the design. It is not the future React operator dashboard. OpenAPI and the simulator exercise the actual backend.
-
-Only the API and explorer publish ports, on `127.0.0.1`. PostgreSQL and Redis remain inside the Compose network. Named volumes preserve their data between container restarts.
-
-FastAPI uses port 8080 inside Docker and on your computer. The explorer uses host port 8081. Set `API_PORT` and `EXPLORER_PORT` in `.env` if needed.
-
-## Run one request
-
-```bash
-docker compose run --rm simulator
-```
-
-The simulator signs a customer webhook, submits an order question, and prints the saved execution timeline from SSE. It then prints the final run state and response.
-
-The seeded record is `ORD-1001`, owned by `customer_17`. Try the ownership-denial path:
-
-```bash
-docker compose run --rm simulator python -m support_engine.simulator --customer-id customer_unrelated
-```
-
-To run the script directly on your computer, install the project dependencies with `uv sync`, then run:
+When a compatible receiving API is available on port 8080, send one event:
 
 ```bash
 uv run python -m support_engine.simulator --base-url http://localhost:8080
 ```
 
-The script sends one event per command. Use `--message` and `--customer-id` to change its input. Use `--timeout` to set the network timeout in seconds. The script signs the exact request bytes, prints the accepted run ID, reads saved progress through SSE, and prints the final result. It exits with a nonzero code on a request or run failure. An escalated request is a valid final outcome.
+Change the input with `--message` and `--customer-id`. Set the network timeout with `--timeout`.
 
-Inside Compose, the simulator uses `http://api:8080`. On your computer, it uses `http://localhost:8080`. The mock API is an internal service and keeps its own port 8000.
+The simulator uses HTTPX to send one signed `support.message_received` event. It uses `httpx-sse` to read progress, then requests the final run status. It signs and sends the exact same request bytes. A failed request, incomplete stream, or failed run produces a nonzero exit code.
 
-Run status and SSE require `Authorization: Bearer <OPERATOR_TOKEN>`. The simulator uses the configured local token. In OpenAPI, supply the full Bearer header where requested.
+The expected API contract is:
 
-## Test and validate
+| Request | Purpose |
+| --- | --- |
+| `POST /webhooks/support` | Submit the event. Return an accepted response with `run_id`. |
+| `GET /runs/{run_id}/events` | Stream saved progress through SSE. |
+| `GET /runs/{run_id}` | Return the final run status and response. |
 
-CI uses these same containers and checks:
+These server routes are not implemented yet. Running the simulator now will report a connection error unless you supply a compatible server. The next learning step is the FastAPI webhook receiver.
 
-```bash
-docker compose --profile test build
-docker compose run --rm --no-deps test ruff check src tests migrations
-docker compose run --rm --no-deps test ruff format --check src tests migrations
-docker compose run --rm test pytest -q
-docker compose run --rm api alembic check
-```
+The `.env` file supplies `WEBHOOK_KEY_ID`, `WEBHOOK_SECRET`, and `OPERATOR_TOKEN`. The future receiver must use matching values. Keep `.env` untracked. The script defaults to `http://localhost:8080`; `API_BASE_URL` or `--base-url` can select another address.
 
-Tests cover signatures, changed-event conflicts, duplicate webhook and RQ delivery, queue failure recovery, customer ownership, tenant-scoped reads, Pub/Sub-triggered SSE, and reconnect replay. Tests use unique synthetic records and do not erase existing demonstration data.
-
-GitHub Actions runs on pushes, pull requests, and manual dispatch. It builds the runtime and test images, runs checks and tests, verifies migrations, and removes its own CI containers and volumes.
-
-## Daily commands
+To run the simulator in Docker:
 
 ```bash
-docker compose ps
-docker compose logs -f api worker
-docker compose run --rm api alembic upgrade head
-docker compose down
+docker compose run --build --rm simulator
 ```
 
-After source changes, rebuild and recreate services with `docker compose up --build -d --wait`.
+The container targets `http://host.docker.internal:8080`. This address points to your computer. Set `SIMULATOR_API_BASE_URL` in `.env` to select another server. No backend service starts with this command.
 
-`.env.example` contains local demonstration credentials. Keep your `.env` untracked. If you change the database password, also update its encoded value in `DATABASE_URL`.
+## Design explorer
 
-## Current limits
+Start the static explorer:
 
-- One configured demonstration tenant and static local service/operator tokens.
-- The fake agent supports an order lookup. Real model calls, refunds, approvals, and a React operator dashboard remain planned.
-- The initial schema stores the event and message inside the run record. Separate ticket/message tables remain a later migration.
-- An operator can retry a pending or failed run. An active run must finish or lose its lease before another attempt can claim it.
-- Database commit and queue submission are separate. Incomplete submissions need retry; automatic scheduling recovery remains planned.
-- Commit and Pub/Sub publication are also separate. Reconnect replays saved history; a missed final notice can leave an open client stale until reconnect.
+```bash
+docker compose up -d --wait explorer
+```
+
+Open [localhost:8081](http://localhost:8081). The explorer shows the proposed architecture and illustrative simulations. It is not a live operator dashboard.
+
+You can also open `visualization/project-explorer.html` directly in a browser.
+
+## Checks
+
+```bash
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run pytest -q
+```
+
+The same checks can run in Docker with `make check` and `make test`. Tests use mock HTTP responses. They need no API, database, Redis, or paid model.
 
 ## Project materials
 
 - [System design](docs/design.md)
-- [Implemented scope and validation](docs/implementation-status.md)
-- [Interactive explorer source](visualization/README.md)
-- [Obsidian notebook](knowledge-base/AI%20Customer%20Support%20Engine/Start%20Here.md)
-- [Knowledge-base workflow](knowledge-base/README.md)
+- [Implementation status](docs/implementation-status.md)
+- [Explorer source](visualization/README.md)
+- [Existing knowledge base](knowledge-base/README.md)
 
-Use the notebook to capture a concept, its failure mode, and evidence from a real test. Preserve personal vault edits when updating seed notes.
+Update learning notes only when requested. Keep personal Obsidian edits outside generated project changes.

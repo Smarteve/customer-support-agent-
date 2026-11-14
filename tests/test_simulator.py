@@ -1,34 +1,36 @@
+import hashlib
+import hmac
 import json
 
 import httpx
 import pytest
 
 from support_engine import simulator
-from support_engine.config import get_settings
-from support_engine.schemas import SupportEvent
-from support_engine.security import verify_signature
 
 
 @pytest.mark.parametrize("status", ["completed", "escalated", "failed", "running"])
 def test_simulator_sends_signed_event_and_checks_final_outcome(monkeypatch, capsys, status):
     calls = []
-    settings = get_settings()
+    secret = "test-webhook-secret"
+    operator_token = "test-operator-token"
+    monkeypatch.setenv("WEBHOOK_KEY_ID", "test")
+    monkeypatch.setenv("WEBHOOK_SECRET", secret)
+    monkeypatch.setenv("OPERATOR_TOKEN", operator_token)
 
     def respond(request):
         calls.append(request)
         if request.method == "POST":
             assert request.url.path == "/webhooks/support"
-            event = SupportEvent.model_validate_json(request.content)
-            assert event.customer_id == "customer_17"
-            assert event.message.text == "Where is ORD-1001?"
-            assert verify_signature(
-                settings.webhook_secret,
-                request.headers["X-Webhook-Timestamp"],
-                request.headers["X-Webhook-Signature"],
-                request.content,
-            )
+            event = json.loads(request.content)
+            assert event["event_type"] == "support.message_received"
+            assert event["customer_id"] == "customer_17"
+            assert event["message"]["text"] == "Where is ORD-1001?"
+            signed = request.headers["X-Webhook-Timestamp"].encode() + b"." + request.content
+            expected = "sha256=" + hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+            assert hmac.compare_digest(request.headers["X-Webhook-Signature"], expected)
+            assert request.headers["X-Webhook-Key-Id"] == "test"
             return httpx.Response(202, json={"run_id": "test-run"})
-        assert request.headers["Authorization"] == "Bearer " + settings.operator_token
+        assert request.headers["Authorization"] == "Bearer " + operator_token
         if request.url.path.endswith("/events"):
             event_type = "run.started" if status == "running" else "run." + status
             event = {"sequence": 1, "type": event_type}

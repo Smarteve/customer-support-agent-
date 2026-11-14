@@ -146,8 +146,8 @@ function renderMap() {
     ${node('queue',370,365,'Role 1: RQ job queue','Holds the saved run ID')}
     ${node('agent',370,570,'Load run · check access + policy','Repeat: execute → save → publish')}
     ${node('database',20,580,'Save state + run_events','At start, progress, and outcome')}
-    ${node('llm',720,520,'Propose calls and responses','Planned · fake agent today')}
-    ${node('mock',720,670,'Return checked order data','Refunds remain planned')}
+    ${node('llm',720,520,'Propose calls and responses','Planned model API')}
+    ${node('mock',720,670,'Return checked order data','Order lookup and refunds planned')}
     ${node('queue',370,880,'Role 2: Pub/Sub notices','Same Redis · transient notices')}
     ${node('gateway',370,1040,'Subscribe → read → stream','Subscribe before replay')}
     ${node('database',20,1040,'Read the saved event history','On a notice or reconnect')}

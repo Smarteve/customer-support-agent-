@@ -1,44 +1,26 @@
-# Starter implementation
+# Implementation status
 
-Date: 7 November 2026
+Updated: 14 November 2026
 
-The Git repository is `Smarteve/customer-support-agent-`. The checkout is the project root. Application files, the visualization, notes, and CI sit directly in this folder. There is no nested `repository/` folder.
+The project is being rebuilt step by step for learning. The previous backend implementation was removed from the working tree. Its code remains available in Git history.
 
 ## Implemented
 
-- Docker Compose services for PostgreSQL, Redis, API, worker, mock orders, and the design explorer.
-- A one-time migration service that completes before API and worker startup.
-- Python 3.12, a committed `uv.lock`, and separate runtime/test image targets.
-- Raw-body HMAC checks, a timestamp window, body limits, and strict event schemas.
-- A transaction that saves the inbound event, message, pending run, and receipt event together.
-- Direct RQ submission after commit, with durable submission-error metadata.
-- A real RQ worker with JSON serialization and a deterministic fake agent.
-- A scoped mock order API. The worker sends trusted customer and tenant context.
-- Short state/event transactions, atomic per-run sequence numbers, and duplicate-execution checks.
-- Redis Pub/Sub notices after commit and an SSE endpoint that subscribes before replay.
-- Bounded, coalesced wake-up buffering and saved-event replay after the browser cursor.
-- Bearer-protected run reads, SSE, and manual retry.
-- Local containers run the Python application as a non-root user.
-- CI builds containers, checks code, runs integration tests, and checks migration consistency.
+- A command-line simulator in `src/support_engine/simulator.py`.
+- One signed customer-message event per command.
+- HTTPX for HTTP requests and `httpx-sse` for complete SSE events.
+- Options for the message, customer ID, server address, and network timeout.
+- Final-status checks and nonzero exit codes for failed requests or runs.
+- Tests with mock HTTP responses, including multiline SSE, heartbeat comments, invalid stream content types, HTTP errors, and final outcomes.
+- A static architecture explorer with a vertical main path and horizontal calls.
+- Docker targets and CI for the simulator tests and code checks.
 
-## Local validation
+## Not implemented
 
-The initial Docker validation passed all 10 tests. Alembic reported no new upgrade operations. The services reached their Compose health checks.
+The FastAPI receiver, status routes, SSE server, worker, PostgreSQL records, migrations, Redis scheduling, Pub/Sub publication, and mock enterprise APIs are not present. They will be built in later learning steps. LangChain, LangGraph, live models, refunds, and the React dashboard also remain planned.
 
-Integration tests used real PostgreSQL, Redis, RQ workers, HTTP endpoints, and Pub/Sub subscriptions. A saved-only event did not update the stream until its notice was published. Reconnection recovered a saved event whose notice was not sent.
+The simulator expects the planned webhook, SSE, and run-status routes. Without a compatible server, it reports a connection error. The planned API port is 8080. The explorer uses host port 8081.
 
-A repeated webhook and a repeated RQ delivery retained one logical run and one execution attempt. A simulated queue error retained a pending run that a sender retry could resubmit.
+The proposed architecture remains in `docs/design.md`. Existing knowledge-base notes have not been regenerated or synchronized. Older implementation claims in those notes refer to the previous starter, not this working tree.
 
-## Still planned
-
-The real model adapter, full tool-use loop, refund approval flow, separate ticket/message tables, React operator UI, and automatic abandoned-work recovery remain planned.
-
-The local tokens and single configured tenant support the demonstration. They are not production identity management.
-
-Redis Pub/Sub is transient. PostgreSQL replay preserves event history, but live notice delivery is not guaranteed across every commit/publish failure.
-
-## Command-line simulator — 14 November 2026
-
-FastAPI uses port 8080 inside Docker and on the host. The design explorer uses host port 8081. The mock API remains internal on port 8000.
-
-The simulator sends one signed `support.message_received` event per command. It accepts `--message`, `--customer-id`, `--base-url`, and `--timeout`. A host invocation defaults to `http://localhost:8080`. Compose supplies `http://api:8080`. The script prints progress through SSE and checks the final run status. An incomplete stream or failed run produces a nonzero exit code.
+Removing the backend source does not delete existing Docker database volumes.

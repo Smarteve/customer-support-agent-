@@ -1,1 +1,1 @@
-"""The first executable support-engine slice."""
+"""Customer support learning project: event simulator."""

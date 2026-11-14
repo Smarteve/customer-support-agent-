@@ -1,103 +1,6 @@
 name: support-engine
 
-x-environment: &environment
-  DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://support:support_dev@postgres:5432/support}
-  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-  ENVIRONMENT: ${ENVIRONMENT:-development}
-  TENANT_ID: ${TENANT_ID:-demo-tenant}
-  WEBHOOK_KEY_ID: ${WEBHOOK_KEY_ID:-demo}
-  WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-webhook-secret-change-me}
-  OPERATOR_TOKEN: ${OPERATOR_TOKEN:-local-operator-token-change-me}
-  MOCK_SERVICE_TOKEN: ${MOCK_SERVICE_TOKEN:-local-mock-token-change-me}
-  MOCK_API_URL: http://mock-api:8000
-
-x-app: &app
-  image: customer-support-engine:dev
-  build:
-    context: .
-    target: runtime
-  environment: *environment
-  init: true
-
 services:
-  postgres:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: support
-      POSTGRES_USER: support
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-support_dev}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: [CMD-SHELL, 'pg_isready -U support -d support']
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    restart: unless-stopped
-
-  redis:
-    image: redis:7.4-alpine
-    command: [redis-server, --appendonly, 'yes']
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: [CMD, redis-cli, ping]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    restart: unless-stopped
-
-  migrate:
-    <<: *app
-    command: [alembic, upgrade, head]
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  mock-api:
-    <<: *app
-    command: [uvicorn, support_engine.mock_api:app, --host, 0.0.0.0, --port, '8000']
-    healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    restart: unless-stopped
-
-  api:
-    <<: *app
-    ports:
-      - '127.0.0.1:${API_PORT:-8080}:8080'
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready')"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    restart: unless-stopped
-
-  worker:
-    <<: *app
-    command: [python, -m, support_engine.worker]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-      mock-api:
-        condition: service_healthy
-    stop_grace_period: 100s
-    healthcheck:
-      test: [CMD, python, -c, "from rq import Worker; from support_engine.messaging import redis_connection; assert Worker.all(connection=redis_connection())"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-    restart: unless-stopped
-
   explorer:
     image: nginx:1.28-alpine
     volumes:
@@ -112,36 +15,26 @@ services:
     restart: unless-stopped
 
   simulator:
-    <<: *app
+    image: customer-support-simulator:dev
+    build:
+      context: .
+      target: runtime
     profiles: [tools]
-    command: [python, -m, support_engine.simulator]
     environment:
-      <<: *environment
-      API_BASE_URL: http://api:8080
-    depends_on:
-      api:
-        condition: service_healthy
-      worker:
-        condition: service_healthy
+      API_BASE_URL: ${SIMULATOR_API_BASE_URL:-http://host.docker.internal:8080}
+      WEBHOOK_KEY_ID: ${WEBHOOK_KEY_ID:-demo}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-webhook-secret-change-me}
+      OPERATOR_TOKEN: ${OPERATOR_TOKEN:-local-operator-token-change-me}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    init: true
 
   test:
+    image: customer-support-simulator:test
     build:
       context: .
       target: test
-    image: customer-support-engine:test
     profiles: [test]
     environment:
-      <<: *environment
-      RUN_INTEGRATION_TESTS: '1'
-      API_BASE_URL: http://api:8080
       RUFF_CACHE_DIR: /tmp/ruff
     init: true
-    depends_on:
-      api:
-        condition: service_healthy
-      worker:
-        condition: service_healthy
-
-volumes:
-  postgres-data:
-  redis-data:

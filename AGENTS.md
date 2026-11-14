@@ -1,6 +1,6 @@
 # Project context
 
-This is an event-driven AI customer support learning project. `docs/design.md` is the proposed system design. The application is starting with a Dockerized fake-agent request path. The full agent and React dashboard remain later milestones. `visualization/` is a static architecture explorer with illustrative simulations, not a running support engine.
+This is an event-driven AI customer support learning project. `docs/design.md` is the proposed system design. Only the command-line event simulator is implemented. The previous backend starter was removed so the user can rebuild it step by step. The receiving API, database, queue, worker, mock services, full agent, and React dashboard remain later milestones. Do not implement a later milestone without an explicit user request. `visualization/` is a static architecture explorer with illustrative simulations, not a running support engine.
 
 Use only `https://github.com/Smarteve/customer-support-agent-.git` for this project. Keep the application, visualization, design, notes, and CI in this checkout. Do not create or publish a separate visualization repository.
 
@@ -14,7 +14,7 @@ The current design starts with eight main components. FastAPI serves webhooks, s
 
 ## Maintain the learning notebook
 
-The user wants concepts encountered during the build recorded for later review in Obsidian.
+Update the knowledge base and Obsidian notes only when the user explicitly asks. The user chooses which concepts to record. The following workflow applies only to a requested note update.
 
 - Use `knowledge-base/concepts.json` for curated explanations shared by the HTML explorer and portable seed notes.
 - Keep project notes in the existing Obsidian vault under `AI Customer Support Engine/`. Discover the vault path locally; do not commit personal sync state.
@@ -26,4 +26,4 @@ The user wants concepts encountered during the build recorded for later review i
 
 ## Application commands
 
-Use Docker Compose from this checkout. Start with `docker compose up --build -d --wait`. Run the demo with `docker compose run --rm simulator`. CI checks Ruff, container integration tests, and `alembic check`. The current API port is 8001. The explorer on 8080 is a design reference, not a live operator dashboard.
+Use Docker Compose from this checkout. Start the explorer with `docker compose up -d --wait explorer`. The explorer on port 8081 is a design reference, not a live dashboard. Run `uv sync`, then `uv run python -m support_engine.simulator --help` for the simulator. The simulator targets a future API on port 8080; there is currently no receiving server. CI checks Ruff and simulator tests with mock HTTP responses. There are no current migrations or container integration tests for a backend. Preserve existing Docker data volumes when removing old services.

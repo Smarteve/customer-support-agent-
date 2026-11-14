@@ -1,4 +1,6 @@
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import time
@@ -6,10 +8,14 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import httpx
+from dotenv import load_dotenv
 from httpx_sse import SSEError, connect_sse
 
-from support_engine.config import get_settings
-from support_engine.security import signature
+
+def signature(secret: str, timestamp: str, body: bytes) -> str:
+    """Sign the timestamp and exact request bytes for the planned webhook contract."""
+    signed = timestamp.encode() + b"." + body
+    return "sha256=" + hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
 
 
 def build_event(message: str, customer_id: str) -> dict:
@@ -27,7 +33,10 @@ def build_event(message: str, customer_id: str) -> dict:
 
 
 def run(base_url: str, message: str, customer_id: str, timeout: float) -> None:
-    settings = get_settings()
+    load_dotenv()
+    key_id = os.environ.get("WEBHOOK_KEY_ID", "demo")
+    secret = os.environ.get("WEBHOOK_SECRET", "local-webhook-secret-change-me")
+    operator_token = os.environ.get("OPERATOR_TOKEN", "local-operator-token-change-me")
     event = build_event(message, customer_id)
     # Sign and send the same bytes. Reserializing later can change the signature.
     body = json.dumps(event).encode()
@@ -40,16 +49,16 @@ def run(base_url: str, message: str, customer_id: str, timeout: float) -> None:
             content=body,
             headers={
                 "Content-Type": "application/json",
-                "X-Webhook-Key-Id": settings.webhook_key_id,
+                "X-Webhook-Key-Id": key_id,
                 "X-Webhook-Timestamp": timestamp,
-                "X-Webhook-Signature": signature(settings.webhook_secret, timestamp, body),
+                "X-Webhook-Signature": signature(secret, timestamp, body),
             },
         )
         response.raise_for_status()
         print(f"HTTP {response.status_code}", flush=True)
         run_id = response.json()["run_id"]
-        print(f"Run: {run_id} (deterministic fake agent; synthetic data)", flush=True)
-        headers = {"Authorization": "Bearer " + settings.operator_token}
+        print(f"Run: {run_id} (synthetic data)", flush=True)
+        headers = {"Authorization": "Bearer " + operator_token}
         with connect_sse(client, "GET", f"/runs/{run_id}/events", headers=headers) as source:
             if source.response.is_error:
                 source.response.read()
@@ -72,6 +81,7 @@ def run(base_url: str, message: str, customer_id: str, timeout: float) -> None:
 
 
 def main():
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Send one signed synthetic customer event")
     parser.add_argument("--message", default="Where is order ORD-1001?")
     parser.add_argument("--customer-id", default="customer_17")

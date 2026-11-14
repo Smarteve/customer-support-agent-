@@ -1,23 +1,22 @@
 .PHONY: up down logs demo test check
 
 up:
-	docker compose up --build -d --wait
+	docker compose up -d --wait explorer
 
 down:
 	docker compose down
 
 logs:
-	docker compose logs -f api worker
+	docker compose logs -f explorer
 
 demo:
-	docker compose run --rm simulator
+	docker compose run --build --rm simulator
 
 check:
-	docker compose --profile test build test
-	docker compose run --rm --no-deps test ruff check src tests migrations
-	docker compose run --rm --no-deps test ruff format --check src tests migrations
+	docker compose build test
+	docker compose run --rm test ruff check src tests
+	docker compose run --rm test ruff format --check src tests
 
 test:
-	docker compose --profile test build
+	docker compose build test
 	docker compose run --rm test pytest -q
-	docker compose run --rm api alembic check

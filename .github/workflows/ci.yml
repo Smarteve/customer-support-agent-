@@ -22,16 +22,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate Compose configuration
         run: docker compose config --quiet
-      - name: Build application and test images
-        run: docker compose --profile test build
+      - name: Build simulator and test images
+        run: docker compose --profile tools --profile test build
       - name: Check Python code and formatting
         run: |
-          docker compose run --rm --no-deps test ruff check src tests migrations
-          docker compose run --rm --no-deps test ruff format --check src tests migrations
-      - name: Test the stack with real PostgreSQL, Redis, and RQ
+          docker compose run --rm --no-deps test ruff check src tests
+          docker compose run --rm --no-deps test ruff format --check src tests
+      - name: Test the simulator with mock HTTP responses
         run: docker compose run --rm test pytest -q
-      - name: Check migration consistency
-        run: docker compose run --rm api alembic check
       - name: Show service state and logs after a failure
         if: failure()
         run: |
