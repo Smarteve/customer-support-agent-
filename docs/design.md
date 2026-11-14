@@ -10,7 +10,7 @@ Start with the main components. Add reliability mechanisms after the basic reque
 
 The first release answers order questions and handles approved mock refunds. All customer data and financial actions are synthetic.
 
-Current learning baseline: only the command-line simulator is implemented. The receiving API, database, queue, worker, mock APIs, model calls, and dashboard described below remain planned. The previous backend starter is available in Git history.
+Current learning baseline: the command-line simulator and first webhook receiver are implemented. The receiver validates the event and signature, then returns a receipt. Database storage, queue submission, the worker, mock APIs, model calls, status/SSE routes, and dashboard described below remain planned. The previous backend starter is available in Git history.
 
 See [implementation status](implementation-status.md) for tested scope. The HTML explorer still shows proposed behavior.
 

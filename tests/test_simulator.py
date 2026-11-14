@@ -84,3 +84,30 @@ def test_simulator_reports_stream_errors(monkeypatch, capsys, stream_status, exp
         simulator.main()
     assert error.value.code == 1
     assert expected_error in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("matches", [True, False])
+def test_simulator_stops_after_receiver_receipt(monkeypatch, capsys, matches):
+    def respond(request):
+        assert request.method == "POST"  # No status or SSE requests at this milestone.
+        event = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "event_id": event["event_id"] if matches else "another-event",
+                "status": "received",
+            },
+        )
+
+    original_client = httpx.Client
+    monkeypatch.setattr(
+        simulator.httpx,
+        "Client",
+        lambda **kwargs: original_client(transport=httpx.MockTransport(respond), **kwargs),
+    )
+    if not matches:
+        with pytest.raises(ValueError, match="does not match"):
+            simulator.run("http://localhost:8080", "Hello", "customer_17", 10)
+    else:
+        simulator.run("http://localhost:8080", "Hello", "customer_17", 10)
+        assert "Storage and processing are not implemented" in capsys.readouterr().out

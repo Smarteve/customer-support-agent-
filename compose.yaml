@@ -1,6 +1,24 @@
 name: support-engine
 
 services:
+  api:
+    image: customer-support-simulator:dev
+    build:
+      context: .
+      target: runtime
+    command: [uvicorn, support_engine.api:app, --host, 0.0.0.0, --port, '8080']
+    environment:
+      WEBHOOK_KEY_ID: ${WEBHOOK_KEY_ID:-demo}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-webhook-secret-change-me}
+    ports:
+      - '127.0.0.1:${API_PORT:-8080}:8080'
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/openapi.json')"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    init: true
+
   explorer:
     image: nginx:1.28-alpine
     volumes:
@@ -21,7 +39,7 @@ services:
       target: runtime
     profiles: [tools]
     environment:
-      API_BASE_URL: ${SIMULATOR_API_BASE_URL:-http://host.docker.internal:8080}
+      API_BASE_URL: ${SIMULATOR_API_BASE_URL:-http://api:8080}
       WEBHOOK_KEY_ID: ${WEBHOOK_KEY_ID:-demo}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-webhook-secret-change-me}
       OPERATOR_TOKEN: ${OPERATOR_TOKEN:-local-operator-token-change-me}

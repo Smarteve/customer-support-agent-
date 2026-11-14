@@ -1,6 +1,4 @@
 import argparse
-import hashlib
-import hmac
 import json
 import os
 import time
@@ -11,11 +9,7 @@ import httpx
 from dotenv import load_dotenv
 from httpx_sse import SSEError, connect_sse
 
-
-def signature(secret: str, timestamp: str, body: bytes) -> str:
-    """Sign the timestamp and exact request bytes for the planned webhook contract."""
-    signed = timestamp.encode() + b"." + body
-    return "sha256=" + hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+from support_engine.security import signature
 
 
 def build_event(message: str, customer_id: str) -> dict:
@@ -56,7 +50,14 @@ def run(base_url: str, message: str, customer_id: str, timeout: float) -> None:
         )
         response.raise_for_status()
         print(f"HTTP {response.status_code}", flush=True)
-        run_id = response.json()["run_id"]
+        receipt = response.json()
+        if response.status_code == 200 and receipt.get("status") == "received":
+            if receipt.get("event_id") != event["event_id"]:
+                raise ValueError("Receipt event ID does not match the submitted event")
+            print(json.dumps(receipt, indent=2))
+            print("Event received and validated. Storage and processing are not implemented yet.")
+            return
+        run_id = receipt["run_id"]
         print(f"Run: {run_id} (synthetic data)", flush=True)
         headers = {"Authorization": "Bearer " + operator_token}
         with connect_sse(client, "GET", f"/runs/{run_id}/events", headers=headers) as source:

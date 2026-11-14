@@ -1,9 +1,12 @@
 [project]
 name = "customer-support-engine"
 version = "0.1.0"
-description = "Command-line event simulator for a customer support learning project"
+description = "Event simulator and first webhook receiver for a customer support learning project"
 requires-python = ">=3.12"
 dependencies = [
+  "fastapi>=0.115,<1",
+  "pydantic>=2.6,<3",
+  "uvicorn>=0.34,<1",
   "httpx>=0.28,<1",
   "httpx-sse>=0.4,<0.5",
   "python-dotenv>=1.0,<2",
