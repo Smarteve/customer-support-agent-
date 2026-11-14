@@ -23,7 +23,7 @@ pytestmark = [
         os.getenv("RUN_INTEGRATION_TESTS") != "1", reason="Use the Compose test service"
     ),
 ]
-BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
+BASE = os.getenv("API_BASE_URL", "http://localhost:8080")
 
 
 def event_payload(customer_id="customer_17"):

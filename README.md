@@ -32,19 +32,19 @@ Run all commands from the project folder. `README.md`, `compose.yaml`, `src/`, a
 
 | Service | Purpose | Local access |
 | --- | --- | --- |
-| `api` | Webhooks, run status, retry, and SSE | [API documentation](http://localhost:8001/docs) |
+| `api` | Webhooks, run status, retry, and SSE | [API documentation](http://localhost:8080/docs) |
 | `worker` | Real RQ worker running the fake agent | Internal network |
 | `postgres` | Persistent run state and event history | Internal network |
 | `redis` | RQ job queue and Pub/Sub notifications | Internal network |
 | `mock-api` | Customer-scoped synthetic order lookup | Internal network |
-| `explorer` | Existing interactive design reference | [Project explorer](http://localhost:8080) |
+| `explorer` | Existing interactive design reference | [Project explorer](http://localhost:8081) |
 | `migrate` | One-time database migrations | Runs before API and worker |
 
 The explorer describes the design. It is not the future React operator dashboard. OpenAPI and the simulator exercise the actual backend.
 
 Only the API and explorer publish ports, on `127.0.0.1`. PostgreSQL and Redis remain inside the Compose network. Named volumes preserve their data between container restarts.
 
-Port 8001 avoids another local project using port 8000. Set `API_PORT` and `EXPLORER_PORT` in `.env` if needed.
+FastAPI uses port 8080 inside Docker and on your computer. The explorer uses host port 8081. Set `API_PORT` and `EXPLORER_PORT` in `.env` if needed.
 
 ## Run one request
 
@@ -59,6 +59,16 @@ The seeded record is `ORD-1001`, owned by `customer_17`. Try the ownership-denia
 ```bash
 docker compose run --rm simulator python -m support_engine.simulator --customer-id customer_unrelated
 ```
+
+To run the script directly on your computer, install the project dependencies with `uv sync`, then run:
+
+```bash
+uv run python -m support_engine.simulator --base-url http://localhost:8080
+```
+
+The script sends one event per command. Use `--message` and `--customer-id` to change its input. Use `--timeout` to set the network timeout in seconds. The script signs the exact request bytes, prints the accepted run ID, reads saved progress through SSE, and prints the final result. It exits with a nonzero code on a request or run failure. An escalated request is a valid final outcome.
+
+Inside Compose, the simulator uses `http://api:8080`. On your computer, it uses `http://localhost:8080`. The mock API is an internal service and keeps its own port 8000.
 
 Run status and SSE require `Authorization: Bearer <OPERATOR_TOKEN>`. The simulator uses the configured local token. In OpenAPI, supply the full Bearer header where requested.
 

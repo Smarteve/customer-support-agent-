@@ -36,3 +36,9 @@ The real model adapter, full tool-use loop, refund approval flow, separate ticke
 The local tokens and single configured tenant support the demonstration. They are not production identity management.
 
 Redis Pub/Sub is transient. PostgreSQL replay preserves event history, but live notice delivery is not guaranteed across every commit/publish failure.
+
+## Command-line simulator — 14 November 2026
+
+FastAPI uses port 8080 inside Docker and on the host. The design explorer uses host port 8081. The mock API remains internal on port 8000.
+
+The simulator sends one signed `support.message_received` event per command. It accepts `--message`, `--customer-id`, `--base-url`, and `--timeout`. A host invocation defaults to `http://localhost:8080`. Compose supplies `http://api:8080`. The script prints progress through SSE and checks the final run status. An incomplete stream or failed run produces a nonzero exit code.

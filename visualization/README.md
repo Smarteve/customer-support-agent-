@@ -13,3 +13,5 @@ After editing the source, run `python3 visualization/build_html.py` from the rep
 Verified in local headless Chrome: component selection, all three simulations, approval/rejection, concept search and reset, Obsidian link targets, browser review persistence, roadmap sections, and mobile page overflow. Simulations do not test the future backend implementation.
 
 The map shows both Redis roles: RQ scheduling and Pub/Sub notices. Each simulated worker step commits before publishing. The stream replays PostgreSQL history after reconnect. The diagrams do not imply that Pub/Sub notices are durable.
+
+The system flowchart uses a vertical main path with horizontal calls to PostgreSQL, the model API, and mock APIs. Three stages separate request acceptance, worker execution, and live progress. Numbered arrows show commit before enqueue and commit before publish. Repeated boxes refer to the same component. Redis supplies both RQ and Pub/Sub in one deployment. Select a box for details below the chart.

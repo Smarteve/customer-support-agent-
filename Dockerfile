@@ -13,7 +13,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 FROM base AS runtime
 USER app
-CMD ["uvicorn", "support_engine.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "support_engine.api:app", "--host", "0.0.0.0", "--port", "8080"]
 
 FROM base AS test
 RUN uv sync --frozen

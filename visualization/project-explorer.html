@@ -17,6 +17,24 @@
 
 #architecture-map .edge.status-edge{stroke:#376b56;stroke-width:2} .edge-label{paint-order:stroke;stroke:#fcfcf9;stroke-width:4px;stroke-linejoin:round}
 
+/* Keep the time sequence readable at normal page width. */
+#architecture-map{width:100%;min-width:940px;max-height:none}
+.diagram-scroll{padding:14px 10px;overflow:auto}
+.flow-recovery{padding:16px 23px;border-top:1px solid var(--line);background:#f8f2ea;font-size:12px;color:#806746}
+.flow-recovery p{margin:8px 0;line-height:1.7}
+@media(min-width:1151px){.inspector{position:sticky;top:20px}}
+
+#architecture-map .flow-stage{fill:#fcfcf9;stroke:#e1e6dc;stroke-width:1}
+#architecture-map .stage-title{font:11px var(--mono);letter-spacing:1px;fill:#8b624c}
+#architecture-map .flow-note{font:12px var(--sans);fill:#73806e}
+#architecture-map .node .node-title{font-size:16px}
+#architecture-map .edge{stroke-width:2}
+/* Give the chart the page width. Details remain directly below it. */
+.map-layout{grid-template-columns:minmax(0,1fr)}
+.inspector{position:static;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+.inspector .inspector-top,.inspector h2,.inspector .component-tech{grid-column:1/-1}
+@media(max-width:580px){.inspector{display:block}}
+
 </style>
 
 
@@ -40,9 +58,9 @@
     <header class="topbar"><div>Projects <span>/</span> AI Customer Support <span>/</span> <strong id="breadcrumb">System map</strong></div><a href="dist/design.md" download>Design document <span>↗</span></a></header>
     <main id="main" tabindex="-1">
       <section id="page-architecture" class="page">
-        <div class="page-head"><div><div class="eyebrow"><span class="small-dash"></span> THE BIG PICTURE</div><h1>Follow the work.</h1><p class="lede">One customer message. Eight main components. Saved progress at each stage.<br>Explore the pieces, and the decisions that connect them.</p></div><div class="design-badge"><span class="status-dot"></span> INTERACTIVE DESIGN<span>Proposed architecture · not live services</span></div></div>
+        <div class="page-head"><div><div class="eyebrow"><span class="small-dash"></span> THE BIG PICTURE</div><h1>Follow the work.</h1><p class="lede">One customer message. Eight main components. Saved progress at each stage.<br>Follow the main path down. Side arrows show calls and saved data.</p></div><div class="design-badge"><span class="status-dot"></span> INTERACTIVE DESIGN<span>Proposed architecture · not live services</span></div></div>
         <div class="map-layout">
-          <section class="panel map-panel" aria-label="Interactive architecture diagram"><div class="panel-heading"><div><h2>The system, connected</h2><p>Select a box. Redis carries RQ jobs and Pub/Sub notices through separate interfaces.</p></div><span class="mono muted">8 COMPONENTS</span></div><div class="diagram-scroll"><svg id="architecture-map" viewBox="0 0 1000 590" role="group" aria-label="Architecture map. Use Tab to select each component."></svg></div><div class="map-legend"><span><i class="legend-dot service"></i> Application</span><span><i class="legend-dot storage"></i> Durable state</span><span><i class="legend-dot external"></i> Model / interface</span><span class="legend-hint">↗ Click a box to explore</span></div></section>
+          <section class="panel map-panel" aria-label="Interactive architecture diagram"><div class="panel-heading"><div><h2>Request flow and live progress</h2><p>Read A → B → C. Follow numbered arrows. Repeated boxes refer to the same service.</p></div><span class="mono muted">8 COMPONENTS</span></div><div class="diagram-scroll"><svg id="architecture-map" viewBox="0 0 1000 1340" role="group" aria-label="Flowchart with a vertical main path and horizontal database, model, and tool calls. Use Tab to select a component."></svg></div><div class="flow-recovery"><strong>Recovery rules</strong><p>If the database commit succeeds but RQ submission fails, the saved run needs a manual retry.</p><p>Pub/Sub notices are transient. A crash after commit can prevent a notice. FastAPI reads saved events on reconnect to recover missed updates. It subscribes before replay. The live path uses no routine database polling.</p><p>The model API and React dashboard are planned. This explorer shows the proposed design.</p></div><div class="map-legend"><span><i class="legend-dot service"></i> Application</span><span><i class="legend-dot storage"></i> Durable state</span><span><i class="legend-dot external"></i> Model / interface</span><span class="legend-hint">↗ Click a box to explore</span></div></section>
           <aside class="panel inspector" id="inspector" aria-label="Selected component details" aria-live="polite"></aside>
         </div>
         <div class="principles"><div><span>01 / ACCEPT DURABLY</span><h3>Save before you schedule.</h3><p>A committed event survives a queue outage.</p></div><div><span>02 / ACT WITH BOUNDARIES</span><h3>The model proposes. Code decides.</h3><p>Tools enforce ownership, policy, and approval.</p></div><div><span>03 / MAKE IT INSPECTABLE</span><h3>Every step leaves a trail.</h3><p>Commit progress, publish a notice, then stream through SSE.</p></div></div>
@@ -99,23 +117,45 @@ const components = [
 ];
 let selectedComponent = 'gateway';
 const colors = {service:['#f7f9f3','#d4ddce'], storage:['#eaf3eb','#b4cbb8'],external:['#f2eff7','#d9cfe4']};
-const edges = [
-  ['M265 87 H370','webhook',315,72],
-  ['M600 87 H705','REST / SSE',652,72,true],
-  ['M450 134 V220','enqueue ↓',401,180],
-  ['M520 220 V134','Pub/Sub ↑',568,180,false,true],
-  ['M600 115 H650 V267 H705','load / replay',690,185,true,true],
-  ['M450 314 V400','consume ↓',399,360],
-  ['M520 400 V314','publish ↑',576,360,false,true],
-  ['M600 415 H650 V292 H705','commit state + event',757,355,false,true],
-  ['M265 447 H370','model I/O',317,432,true],
-  ['M600 447 H705','tool calls',653,475,true]
-];
+// Vertical execution path, with horizontal calls to storage and external APIs.
 function renderMap() {
+  const node = (id,x,y,sub,note='') => {
+    const c = components.find(item=>item.id===id);
+    return `<g class="node ${selectedComponent===id?'selected':''}" role="button" tabindex="0" aria-label="${escapeHTML(c.title)}: ${escapeHTML(sub)}. ${escapeHTML(note)}" aria-pressed="${selectedComponent===id}" data-component="${id}" transform="translate(${x} ${y})"><rect width="260" height="100" rx="10" fill="${colors[c.type][0]}" stroke="${colors[c.type][1]}"/><text x="15" y="24" class="node-title">${escapeHTML(c.title)}</text><text x="15" y="50" class="node-sub">${escapeHTML(sub)}</text><text x="15" y="76" class="node-sub">${escapeHTML(note)}</text>${selectedComponent===id?'<circle class="selected-indicator" cx="244" cy="16" r="3.5"/>':''}</g>`;
+  };
+  const arrow = (path,label,x,y,{live=false,both=false}={}) => `<path class="edge ${live?'status-edge':''}" d="${path}" marker-end="url(#${live?'arrow-status':'arrow'})" ${both?`marker-start="url(#${live?'arrow-status':'arrow'})"`:''}/><text class="edge-label" x="${x}" y="${y}" text-anchor="middle">${escapeHTML(label)}</text>`;
+  const stage = (y,height,title) => `<rect class="flow-stage" x="5" y="${y}" width="990" height="${height}" rx="12"/><text class="stage-title" x="25" y="${y+26}">${title}</text>`;
   $('#architecture-map').innerHTML = `<defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto-start-reverse"><path d="M0,0 L7,3.5 L0,7" fill="#aeb9ae"/></marker><marker id="arrow-status" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto-start-reverse"><path d="M0,0 L7,3.5 L0,7" fill="#376b56"/></marker></defs>
-  <text x="35" y="20" class="edge-label">JOBS + LIVE PUB/SUB UPDATES</text><text x="35" y="555" class="edge-label">LIVE: WORKER → REDIS PUB/SUB → FASTAPI SSE → DASHBOARD</text>
-  ${edges.map(([path,label,x,y,both,status])=>`<path class="edge ${status?'status-edge':''}" d="${path}" marker-end="url(#${status?'arrow-status':'arrow'})" ${both?`marker-start="url(#${status?'arrow-status':'arrow'})"`:''}/><text class="edge-label" x="${x}" y="${y}" text-anchor="middle">${label}</text>`).join('')}
-  ${components.map(c=>`<g class="node ${selectedComponent===c.id?'selected':''}" role="button" tabindex="0" aria-label="${escapeHTML(c.title)}: ${escapeHTML(c.sub)}" aria-pressed="${selectedComponent===c.id}" data-component="${c.id}" transform="translate(${c.x} ${c.y})"><rect width="230" height="94" rx="10" fill="${colors[c.type][0]}" stroke="${colors[c.type][1]}"/><text x="17" y="23" class="number">${c.no}</text><text x="17" y="49" class="node-title">${escapeHTML(c.title)}</text><text x="17" y="73" class="node-sub">${escapeHTML(c.sub)}</text>${selectedComponent===c.id?'<circle class="selected-indicator" cx="209" cy="20" r="3.5"/>':''}</g>`).join('')}`;
+    ${stage(5,465,'A / ACCEPT THE REQUEST')}
+    ${stage(490,320,'B / RUN THE WORK · CHECKS STAY IN THE WORKER')}
+    ${stage(830,495,'C / STREAM EACH SAVED STEP')}
+    ${arrow('M500 155 V215','1 · signed webhook',590,187)}
+    ${arrow('M370 250 H280','2 · save + commit',210,202)}
+    ${arrow('M500 315 V365','3 · enqueue run ID',590,345)}
+    ${arrow('M500 465 V570','4 · consume job',585,548)}
+    ${arrow('M630 595 H675 V570 H720','5a · model I/O',820,505,{both:true})}
+    ${arrow('M630 645 H675 V720 H720','5b · checked tools',688,775,{both:true})}
+    ${arrow('M370 630 H280','6 · commit step',215,564)}
+    ${arrow('M500 670 V880','7 · publish after commit',585,790,{live:true})}
+    ${arrow('M500 980 V1040','8 · progress notice',590,1015,{live:true})}
+    ${arrow('M370 1090 H280','9 · read saved events',210,1025,{live:true,both:true})}
+    ${arrow('M500 1140 V1200','10 · SSE events',585,1176,{live:true})}
+    ${node('customer',370,55,'Customer message','Simulator in the local demo')}
+    ${node('gateway',370,215,'Verify and accept the webhook','Commit before queue submission')}
+    ${node('database',20,215,'Save input + pending run','One database transaction')}
+    ${node('queue',370,365,'Role 1: RQ job queue','Holds the saved run ID')}
+    ${node('agent',370,570,'Load run · check access + policy','Repeat: execute → save → publish')}
+    ${node('database',20,580,'Save state + run_events','At start, progress, and outcome')}
+    ${node('llm',720,520,'Propose calls and responses','Planned · fake agent today')}
+    ${node('mock',720,670,'Return checked order data','Refunds remain planned')}
+    ${node('queue',370,880,'Role 2: Pub/Sub notices','Same Redis · transient notices')}
+    ${node('gateway',370,1040,'Subscribe → read → stream','Subscribe before replay')}
+    ${node('database',20,1040,'Read the saved event history','On a notice or reconnect')}
+    ${node('dashboard',370,1200,'Display the saved timeline','Planned operator interface')}
+    <text class="flow-note" x="25" y="355">If step 3 fails after commit,</text><text class="flow-note" x="25" y="376">the saved run needs manual retry.</text>
+    <text class="flow-note" x="25" y="730">The worker also reads saved input</text><text class="flow-note" x="25" y="751">from PostgreSQL before execution.</text>
+    <text class="flow-note" x="720" y="910">Publish a notice after each commit.</text><text class="flow-note" x="720" y="932">The notice does not contain history.</text>
+    <text class="flow-note" x="720" y="1070">Replay recovers missed notices.</text><text class="flow-note" x="720" y="1092">No routine database polling.</text>`;
   const c = components.find(c=>c.id===selectedComponent);
   $('#inspector').innerHTML = `<div class="inspector-top"><span class="component-number">COMPONENT ${c.no} / ${components.length}</span><span class="tag">${c.type==='storage'?'DURABLE STATE':c.type==='external'?'INTERFACE':'APPLICATION'}</span></div><h2>${c.title}</h2><div class="component-tech">${c.tech}</div><div><p>${c.description}</p><h3>WHAT IT DOES</h3><ul class="responsibilities">${c.does.map(s=>`<li>${s}</li>`).join('')}</ul></div><div><h3>CONNECTED CONCEPTS</h3><div class="concept-chips">${c.concepts.map(chip).join('')}</div><div class="component-rule">${c.rule}</div><h3>GO ONE LEVEL DEEPER</h3><a class="text-link" href="${obsidianURI('System Design')}">Open the design in Obsidian ↗</a></div>`;
 }

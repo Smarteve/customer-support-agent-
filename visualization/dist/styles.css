@@ -7,3 +7,21 @@
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;scroll-behavior:auto!important}}
 
 #architecture-map .edge.status-edge{stroke:#376b56;stroke-width:2} .edge-label{paint-order:stroke;stroke:#fcfcf9;stroke-width:4px;stroke-linejoin:round}
+
+/* Keep the time sequence readable at normal page width. */
+#architecture-map{width:100%;min-width:940px;max-height:none}
+.diagram-scroll{padding:14px 10px;overflow:auto}
+.flow-recovery{padding:16px 23px;border-top:1px solid var(--line);background:#f8f2ea;font-size:12px;color:#806746}
+.flow-recovery p{margin:8px 0;line-height:1.7}
+@media(min-width:1151px){.inspector{position:sticky;top:20px}}
+
+#architecture-map .flow-stage{fill:#fcfcf9;stroke:#e1e6dc;stroke-width:1}
+#architecture-map .stage-title{font:11px var(--mono);letter-spacing:1px;fill:#8b624c}
+#architecture-map .flow-note{font:12px var(--sans);fill:#73806e}
+#architecture-map .node .node-title{font-size:16px}
+#architecture-map .edge{stroke-width:2}
+/* Give the chart the page width. Details remain directly below it. */
+.map-layout{grid-template-columns:minmax(0,1fr)}
+.inspector{position:static;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+.inspector .inspector-top,.inspector h2,.inspector .component-tech{grid-column:1/-1}
+@media(max-width:580px){.inspector{display:block}}
