@@ -2,21 +2,31 @@ import hashlib
 import hmac
 import json
 import time
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from support_engine.api import create_app
+from support_engine.database import Event, Run
+from support_engine.schemas import SupportEvent
 from support_engine.simulator import build_event
 
 SECRET = "test-webhook-secret"
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, request):
     monkeypatch.setenv("WEBHOOK_KEY_ID", "test")
     monkeypatch.setenv("WEBHOOK_SECRET", SECRET)
-    with TestClient(create_app()) as client:
+    sessions = (
+        request.getfixturevalue("db_sessions")
+        if request.node.get_closest_marker("database")
+        else None
+    )
+    with TestClient(create_app(sessions)) as client:
         yield client
 
 
@@ -31,15 +41,37 @@ def headers(body: bytes, timestamp: str | None = None) -> dict:
     }
 
 
-def test_signed_event_returns_a_receipt_without_a_run(client):
+@pytest.mark.database
+def test_signed_event_and_pending_run_are_saved_once(client, db_sessions):
     event = build_event("Where is ORD-1001?", "customer_17")
     body = json.dumps(event).encode()
     response = client.post("/webhooks/support", content=body, headers=headers(body))
     assert response.status_code == 200
-    assert response.json() == {"event_id": event["event_id"], "status": "received"}
-    # There is no storage yet. Repeated events receive the same acknowledgement.
+    receipt = response.json()
+    assert receipt["event_id"] == event["event_id"]
+    assert receipt["status"] == "saved"
+    assert receipt["run_status"] == "pending"
+    run_id = UUID(receipt["run_id"])
+    with db_sessions() as session:
+        run = session.get(Run, run_id)
+        saved = session.get(Event, run.event_id)
+        assert saved.event_id == event["event_id"]
+        assert saved.payload == SupportEvent.model_validate(event).model_dump(mode="json")
+        assert run.status == "pending"
+    # JSON whitespace is not part of the event's logical content.
+    body = json.dumps(event, indent=2).encode()
     repeat = client.post("/webhooks/support", content=body, headers=headers(body))
     assert repeat.json() == response.json()
+    event["message"]["text"] = "Changed message"
+    body = json.dumps(event).encode()
+    conflict = client.post("/webhooks/support", content=body, headers=headers(body))
+    assert conflict.status_code == 409
+    with db_sessions() as session:
+        assert (
+            len(session.scalars(select(Event).where(Event.event_id == event["event_id"])).all())
+            == 1
+        )
+        assert session.get(Event, saved.id).payload["message"]["text"] == "Where is ORD-1001?"
 
 
 @pytest.mark.parametrize(
@@ -104,3 +136,14 @@ def test_openapi_contains_request_and_response_schemas(client):
     assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/WebhookReceipt"
     }
+
+
+def test_storage_failure_returns_no_success_receipt(client, monkeypatch):
+    def fail(*args):
+        raise SQLAlchemyError("database unavailable")
+
+    monkeypatch.setattr("support_engine.api.save_event", fail)
+    body = json.dumps(build_event("Hello", "customer_17")).encode()
+    response = client.post("/webhooks/support", content=body, headers=headers(body))
+    assert response.status_code == 503
+    assert "run_id" not in response.json()

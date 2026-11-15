@@ -111,3 +111,27 @@ def test_simulator_stops_after_receiver_receipt(monkeypatch, capsys, matches):
     else:
         simulator.run("http://localhost:8080", "Hello", "customer_17", 10)
         assert "Storage and processing are not implemented" in capsys.readouterr().out
+
+
+def test_simulator_stops_after_saved_pending_run(monkeypatch, capsys):
+    def respond(request):
+        assert request.method == "POST"
+        event = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "event_id": event["event_id"],
+                "status": "saved",
+                "run_id": "test-run",
+                "run_status": "pending",
+            },
+        )
+
+    original_client = httpx.Client
+    monkeypatch.setattr(
+        simulator.httpx,
+        "Client",
+        lambda **kwargs: original_client(transport=httpx.MockTransport(respond), **kwargs),
+    )
+    simulator.run("http://localhost:8080", "Hello", "customer_17", 10)
+    assert "Queue submission is not implemented" in capsys.readouterr().out

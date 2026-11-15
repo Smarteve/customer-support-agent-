@@ -8,7 +8,10 @@ The project is being rebuilt step by step for learning. The previous backend imp
 
 - A FastAPI `POST /webhooks/support` route with Pydantic input and response schemas.
 - Raw-body signature checks, sender-key validation, and a 300-second timestamp window.
-- HTTP 200 receipts with `event_id` and `status: received`. The event is not saved or queued.
+- PostgreSQL `events` and `runs` tables, applied by an Alembic migration.
+- One transaction saves the input and its pending run before HTTP 200. The response includes `status: saved`, `run_id`, and `run_status`.
+- Duplicate input returns the existing run. Changed content under the same sender and event ID returns HTTP 409.
+- Database failures return HTTP 503. No success receipt is returned before commit.
 - HTTP 401 for invalid webhook credentials and HTTP 422 for invalid event data.
 - A command-line simulator in `src/support_engine/simulator.py`.
 - One signed customer-message event per command.
@@ -22,10 +25,12 @@ The project is being rebuilt step by step for learning. The previous backend imp
 
 ## Not implemented
 
-Status routes, the SSE server, worker, PostgreSQL records, migrations, Redis scheduling, Pub/Sub publication, and mock enterprise APIs are not present. They will be built in later learning steps. LangChain, LangGraph, live models, refunds, and the React dashboard also remain planned.
+Status routes, the SSE server, worker, Redis scheduling, Pub/Sub publication, progress history, and mock enterprise APIs are not present. They will be built in later learning steps. LangChain, LangGraph, live models, refunds, and the React dashboard also remain planned.
 
-The simulator can submit an event to the receiver and print its receipt. No run is created. Repeated events are acknowledged again because there is no storage or duplicate detection yet. The API port is 8080. The explorer uses host port 8081.
+The simulator submits an event and prints its saved run ID. Matching duplicates reuse that run. The run remains pending because queue submission and execution are later steps. The API port is 8080. The explorer uses host port 8081.
 
 The proposed architecture remains in `docs/design.md`. Existing knowledge-base notes have not been regenerated or synchronized. Older implementation claims in those notes refer to the previous starter, not this working tree.
 
 Removing the backend source does not delete existing Docker database volumes.
+
+The new PostgreSQL service uses the `event-store-data` volume. Previous starter volumes are not modified. See [database schema](database.md) for fields, constraints, and inspection commands.

@@ -6,6 +6,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
+COPY migrations ./migrations
+COPY alembic.ini ./
 RUN uv sync --frozen --no-dev && useradd --create-home --uid 10001 app
 ENV PATH="/app/.venv/bin:$PATH"
 

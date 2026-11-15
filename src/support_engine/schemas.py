@@ -1,6 +1,7 @@
 """The customer event and the receiver's acknowledgement."""
 
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
@@ -30,4 +31,6 @@ class WebhookReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     event_id: Identifier
-    status: Literal["received"] = "received"
+    status: Literal["saved"] = "saved"
+    run_id: UUID
+    run_status: Literal["pending", "running", "completed", "failed", "escalated"]

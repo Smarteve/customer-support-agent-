@@ -14,9 +14,10 @@ demo:
 
 check:
 	docker compose build test
-	docker compose run --rm test ruff check src tests
-	docker compose run --rm test ruff format --check src tests
+	docker compose run --rm --no-deps test ruff check src tests migrations
+	docker compose run --rm --no-deps test ruff format --check src tests migrations
 
 test:
 	docker compose build test
 	docker compose run --rm test pytest -q
+	docker compose run --rm --no-deps migrate alembic check

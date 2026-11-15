@@ -51,11 +51,16 @@ def run(base_url: str, message: str, customer_id: str, timeout: float) -> None:
         response.raise_for_status()
         print(f"HTTP {response.status_code}", flush=True)
         receipt = response.json()
-        if response.status_code == 200 and receipt.get("status") == "received":
+        if response.status_code == 200 and receipt.get("status") in {"received", "saved"}:
             if receipt.get("event_id") != event["event_id"]:
                 raise ValueError("Receipt event ID does not match the submitted event")
             print(json.dumps(receipt, indent=2))
-            print("Event received and validated. Storage and processing are not implemented yet.")
+            if receipt["status"] == "saved":
+                print("Event saved. The run is pending. Queue submission is not implemented yet.")
+            else:
+                print(
+                    "Event received and validated. Storage and processing are not implemented yet."
+                )
             return
         run_id = receipt["run_id"]
         print(f"Run: {run_id} (synthetic data)", flush=True)
