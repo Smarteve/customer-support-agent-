@@ -164,3 +164,45 @@ def test_progress_insert_failure_rolls_back_status(
             )
         )
         assert history == expected_history
+
+
+@pytest.mark.parametrize("work_fails", [False, True])
+def test_notices_are_published_after_committed_progress(db_engine, monkeypatch, work_fails):
+    monkeypatch.setattr(jobs, "make_engine", lambda: db_engine)
+    payload = SupportEvent.model_validate(build_event("Hello", "customer_17"))
+    with Session(db_engine) as session:
+        receipt = save_event(session, "notice-" + uuid4().hex, payload)
+        event_id = session.get(Run, receipt.run_id).event_id
+    observed = []
+
+    def check_committed(run_id):
+        # A different connection can see only committed state and progress.
+        with Session(db_engine) as session:
+            run = session.get(Run, receipt.run_id)
+            history = list(
+                session.scalars(
+                    select(RunEvent.event_type)
+                    .where(RunEvent.run_id == receipt.run_id)
+                    .order_by(RunEvent.id)
+                )
+            )
+            observed.append((run.status, history))
+
+    monkeypatch.setattr(jobs, "publish_run_notice", check_committed)
+    try:
+        if work_fails:
+            monkeypatch.setattr(jobs.logger, "info", Mock(side_effect=RuntimeError("work failed")))
+            with pytest.raises(RuntimeError, match="work failed"):
+                jobs.process_run(str(receipt.run_id))
+            expected_status, expected_event = "failed", "run.failed"
+        else:
+            jobs.process_run(str(receipt.run_id))
+            expected_status, expected_event = "completed", "run.completed"
+        assert observed == [
+            ("running", ["run.started"]),
+            (expected_status, ["run.started", expected_event]),
+        ]
+    finally:
+        with db_engine.begin() as connection:
+            connection.execute(delete(Run).where(Run.id == receipt.run_id))
+            connection.execute(delete(Event).where(Event.id == event_id))

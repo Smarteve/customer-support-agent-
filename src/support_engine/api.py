@@ -1,9 +1,10 @@
 """Receive signed events and provide authenticated run snapshots."""
 
+import asyncio
 import hmac
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Annotated
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from support_engine.messaging import QueueSubmissionError, enqueue_run
 from support_engine.repository import EventConflict, save_event
 from support_engine.schemas import RunSnapshot, SupportEvent, WebhookReceipt
 from support_engine.security import verify_signature
+from support_engine.subscriber import listen_for_run_notices
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +36,18 @@ def create_app(sessions: sessionmaker | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        yield
-        if engine is not None:
-            engine.dispose()
+        logging.basicConfig(level=logging.INFO)
+        subscriber = asyncio.create_task(listen_for_run_notices())
+        try:
+            yield
+        finally:
+            subscriber.cancel()
+            try:
+                with suppress(asyncio.CancelledError):
+                    await subscriber
+            finally:
+                if engine is not None:
+                    engine.dispose()
 
     app = FastAPI(title="Support webhook receiver", version="0.1.0", lifespan=lifespan)
 

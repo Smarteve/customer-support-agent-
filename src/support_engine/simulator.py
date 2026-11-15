@@ -55,7 +55,7 @@ def run(base_url: str, message: str, customer_id: str, timeout: float) -> None:
             if receipt.get("event_id") != event["event_id"]:
                 raise ValueError("Receipt event ID does not match the submitted event")
             print(json.dumps(receipt, indent=2))
-            print("Run queued. Worker execution is not implemented yet.")
+            print("Run queued. The simulator stops after the receipt.")
             return
         if response.status_code == 200 and receipt.get("status") in {"received", "saved"}:
             if receipt.get("event_id") != event["event_id"]:

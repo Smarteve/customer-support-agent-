@@ -1,11 +1,15 @@
+import logging
 import os
 from uuid import UUID
 
 from redis import Redis
+from redis.exceptions import RedisError
 from rq import Queue
 from rq.exceptions import DuplicateJobError
 from rq.job import JobStatus
 from rq.serializers import JSONSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class QueueSubmissionError(RuntimeError):
@@ -54,3 +58,16 @@ def enqueue_run(run_id: str) -> str:
             ):
                 raise QueueSubmissionError("Existing job is not the expected queued run") from exc
     return job_id
+
+
+def publish_run_notice(run_id: str) -> None:
+    channel = f"support:run:{run_id}"
+    try:
+        with redis_connection() as connection:
+            connection.publish(channel, "update")
+
+    except RedisError as exc:
+        logger.warning(
+            "run_notice_failed",
+            extra={"run_id": run_id, "category": type(exc).__name__},
+        )

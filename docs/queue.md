@@ -73,7 +73,24 @@ docker compose up -d --wait worker
 
 Starting the worker also consumes existing queued jobs. To process an isolated queue once, set `RQ_QUEUE` and run `python -m support_engine.worker --burst` in a one-off worker container. Burst mode exits when the queue is empty. Tests use this mode in a separate process.
 
-The current Redis role is RQ scheduling. Pub/Sub notices and SSE server delivery remain later steps, using this same Redis deployment.
+Redis now serves two roles: RQ scheduling and run notices through Pub/Sub. After each progress transaction commits, the worker publishes `update` to `support:run:<run UUID>`. A publication failure is logged. It does not undo committed progress or fail an otherwise completed job.
+
+FastAPI starts an asynchronous subscriber with the API process. It subscribes to `support:run:*` and logs `run_notice_received run_id=<UUID>`. It uses a separate Redis connection with no short read timeout. It retries the subscription after a Redis error and closes the connection on API shutdown. This step only logs notices. It does not read progress or deliver SSE messages yet.
+
+To observe delivery, start the API and worker, follow API logs, and send an event from a second terminal:
+
+```bash
+docker compose up --build -d --wait api worker
+docker compose logs -f api
+```
+
+```bash
+docker compose run --rm simulator
+```
+
+Wait for `run_notice_subscriber_ready` before sending the event. A successful run normally produces two received notices. The subscriber also accepts notices from other runs. Notices are temporary. Redis does not replay messages sent before subscription or during a disconnect. The worker can also stop after the database commit but before publication. PostgreSQL retains the progress in both cases. Reconnecting the subscriber alone does not replay that history in this step.
+
+The later SSE route must subscribe before replay, read saved progress on notices, and recover missed notices through replay on client reconnect. No routine database polling is used.
 
 Tests use random queue names and remove only their own jobs. They do not flush shared Redis or delete demonstration records.
 

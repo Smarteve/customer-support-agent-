@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Smarteve/customer-support-agent-/actions/workflows/ci.yml/badge.svg)](https://github.com/Smarteve/customer-support-agent-/actions/workflows/ci.yml)
 
-This is an event-driven customer support learning project. We will build the backend one step at a time. The event simulator and first webhook receiver are implemented. The receiver validates input and saves the event and a pending run in PostgreSQL. After commit, the receiver submits the saved run ID to RQ in Redis. A separate RQ worker logs the saved event type and updates the run status. The worker saves progress in `run_events` with each status change. Mock services remain planned.
+This is an event-driven customer support learning project. We will build the backend one step at a time. The event simulator and first webhook receiver are implemented. The receiver validates input and saves the event and a pending run in PostgreSQL. After commit, the receiver submits the saved run ID to RQ in Redis. A separate RQ worker logs the saved event type and updates the run status. The worker saves progress in `run_events` with each status change. It publishes a Redis notice after commit. A FastAPI subscriber logs received run IDs. SSE delivery remains planned. Mock services remain planned.
 
 Keep all project files in [this repository](https://github.com/Smarteve/customer-support-agent-). Run commands from the checkout root. There is no nested `repository/` folder.
 

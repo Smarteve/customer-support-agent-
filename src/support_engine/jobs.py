@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from support_engine.database import Event, Run, RunEvent, make_engine
+from support_engine.messaging import publish_run_notice
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ def process_run(run_id: str) -> None:
                     logger.info("Skipping run %s: status is not pending", saved_id)
                     return
                 session.add(RunEvent(run_id=saved_id, event_type="run.started"))
+            publish_run_notice(str(saved_id))
             # The claim commits before work starts. A crash can leave the run running.
             try:
                 with session.begin():
@@ -47,6 +49,7 @@ def process_run(run_id: str) -> None:
                             details={"operation": "log_event_type"},
                         )
                     )
+                publish_run_notice(str(saved_id))
             except Exception as exc:
                 # The failed work transaction has rolled back before this transaction.
                 with session.begin():
@@ -58,6 +61,7 @@ def process_run(run_id: str) -> None:
                             details={"error_type": type(exc).__name__},
                         )
                     )
+                publish_run_notice(str(saved_id))
                 raise
     finally:
         engine.dispose()
