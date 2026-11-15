@@ -31,6 +31,7 @@ class WebhookReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     event_id: Identifier
-    status: Literal["saved"] = "saved"
+    status: Literal["saved", "queued"] = "saved"
     run_id: UUID
     run_status: Literal["pending", "running", "completed", "failed", "escalated"]
+    job_id: str | None = None

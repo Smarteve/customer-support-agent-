@@ -134,4 +134,34 @@ def test_simulator_stops_after_saved_pending_run(monkeypatch, capsys):
         lambda **kwargs: original_client(transport=httpx.MockTransport(respond), **kwargs),
     )
     simulator.run("http://localhost:8080", "Hello", "customer_17", 10)
-    assert "Queue submission is not implemented" in capsys.readouterr().out
+    assert "does not confirm queue submission" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("matches", [True, False])
+def test_simulator_stops_after_enqueue_receipt(monkeypatch, capsys, matches):
+    def respond(request):
+        assert request.method == "POST"  # Status/SSE routes are still a later step.
+        event = json.loads(request.content)
+        return httpx.Response(
+            202,
+            json={
+                "event_id": event["event_id"] if matches else "wrong-event",
+                "status": "queued",
+                "run_id": "test-run",
+                "run_status": "pending",
+                "job_id": "run-test-run",
+            },
+        )
+
+    original_client = httpx.Client
+    monkeypatch.setattr(
+        simulator.httpx,
+        "Client",
+        lambda **kwargs: original_client(transport=httpx.MockTransport(respond), **kwargs),
+    )
+    if matches:
+        simulator.run("http://localhost:8080", "Hello", "customer_17", 10)
+        assert "Run queued" in capsys.readouterr().out
+    else:
+        with pytest.raises(ValueError, match="does not match"):
+            simulator.run("http://localhost:8080", "Hello", "customer_17", 10)

@@ -28,7 +28,7 @@ jobs:
         run: |
           docker compose run --rm --no-deps test ruff check src tests migrations
           docker compose run --rm --no-deps test ruff format --check src tests migrations
-      - name: Test the receiver and simulator
+      - name: Test the receiver, database, queue, and simulator
         run: docker compose run --rm test pytest -q
       - name: Check database migration consistency
         run: docker compose run --rm --no-deps migrate alembic check

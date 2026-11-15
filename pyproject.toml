@@ -13,6 +13,8 @@ dependencies = [
   "httpx>=0.28,<1",
   "httpx-sse>=0.4,<0.5",
   "python-dotenv>=1.0,<2",
+  "redis>=6,<8",
+  "rq>=2.8,<3",
 ]
 
 [dependency-groups]
@@ -28,7 +30,10 @@ packages = ["src/support_engine"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 cache_dir = "/tmp/support-engine-pytest-cache"
-markers = ["database: requires migrated PostgreSQL via TEST_DATABASE_URL"]
+markers = [
+  "database: requires migrated PostgreSQL via TEST_DATABASE_URL",
+  "queue: requires Redis via TEST_REDIS_URL",
+]
 
 [tool.ruff]
 target-version = "py312"

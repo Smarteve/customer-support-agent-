@@ -51,12 +51,18 @@ def run(base_url: str, message: str, customer_id: str, timeout: float) -> None:
         response.raise_for_status()
         print(f"HTTP {response.status_code}", flush=True)
         receipt = response.json()
+        if response.status_code == 202 and receipt.get("status") == "queued":
+            if receipt.get("event_id") != event["event_id"]:
+                raise ValueError("Receipt event ID does not match the submitted event")
+            print(json.dumps(receipt, indent=2))
+            print("Run queued. Worker execution is not implemented yet.")
+            return
         if response.status_code == 200 and receipt.get("status") in {"received", "saved"}:
             if receipt.get("event_id") != event["event_id"]:
                 raise ValueError("Receipt event ID does not match the submitted event")
             print(json.dumps(receipt, indent=2))
             if receipt["status"] == "saved":
-                print("Event saved. The run is pending. Queue submission is not implemented yet.")
+                print("Event saved. This receipt does not confirm queue submission.")
             else:
                 print(
                     "Event received and validated. Storage and processing are not implemented yet."

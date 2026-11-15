@@ -26,6 +26,7 @@ def client(monkeypatch, request):
         if request.node.get_closest_marker("database")
         else None
     )
+    monkeypatch.setattr("support_engine.api.enqueue_run", lambda run_id: f"run-{run_id}")
     with TestClient(create_app(sessions)) as client:
         yield client
 
@@ -46,10 +47,11 @@ def test_signed_event_and_pending_run_are_saved_once(client, db_sessions):
     event = build_event("Where is ORD-1001?", "customer_17")
     body = json.dumps(event).encode()
     response = client.post("/webhooks/support", content=body, headers=headers(body))
-    assert response.status_code == 200
+    assert response.status_code == 202
     receipt = response.json()
     assert receipt["event_id"] == event["event_id"]
-    assert receipt["status"] == "saved"
+    assert receipt["status"] == "queued"
+    assert receipt["job_id"] == "run-" + receipt["run_id"]
     assert receipt["run_status"] == "pending"
     run_id = UUID(receipt["run_id"])
     with db_sessions() as session:
@@ -133,7 +135,7 @@ def test_openapi_contains_request_and_response_schemas(client):
     assert operation["requestBody"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/SupportEvent"
     }
-    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+    assert operation["responses"]["202"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/WebhookReceipt"
     }
 

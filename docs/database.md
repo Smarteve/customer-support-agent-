@@ -38,9 +38,10 @@ The foreign key requires a saved event. A unique constraint on `runs.event_id` p
 3. Insert the incoming event. The unique constraint also handles simultaneous deliveries.
 4. Create its pending run. For a matching duplicate, read the existing run instead.
 5. Commit the transaction.
-6. Return HTTP 200 with `status: saved`, `run_id`, and `run_status`.
+6. After commit, call `enqueue_run(run_id)` to submit the saved ID to RQ.
+7. Return HTTP 202 with `status: queued`, the run ID, the pending run status, and the RQ job ID.
 
-A failure before commit rolls back both records. Different content under an existing event ID returns HTTP 409. Database errors return HTTP 503. Retry the same event ID and content if the outcome is uncertain. A commit can succeed even if the HTTP response is lost; the matching retry returns the saved run.
+A failure before commit rolls back both records. Different content under an existing event ID returns HTTP 409. Database or queue errors return HTTP 503. Queue errors include the saved run ID; they do not undo the database commit. Retry the same event ID and content if the outcome is uncertain. A commit can succeed even if the HTTP response is lost; the matching retry returns the saved run.
 
 Pydantic normalizes the event before comparison. JSON spacing and field order do not create another event.
 
@@ -78,6 +79,6 @@ docker compose run --rm --no-deps migrate alembic check
 
 Database tests use PostgreSQL after migrations. Most test rows are rolled back. The simultaneous-request test commits its own records and deletes only those records during cleanup. Host-only test runs skip database tests unless `TEST_DATABASE_URL` points to migrated PostgreSQL.
 
-Redis, RQ, workers, progress history, status routes, and SSE server routes remain later steps. A pending run is saved work. It does not prove queue submission. The later database/queue gap will require manual retry until automatic recovery is implemented.
+Redis and RQ now receive the run ID after commit. Workers, progress history, status routes, and SSE server routes remain later steps. A pending run is saved work. It does not prove queue submission. The database/queue gap requires manual retry; there is no automatic dispatcher. See [queue submission](queue.md).
 
 References: [SQLAlchemy transactions](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html), [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html), [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html).

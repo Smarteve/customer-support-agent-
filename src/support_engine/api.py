@@ -6,11 +6,13 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from support_engine.database import make_engine
+from support_engine.messaging import QueueSubmissionError, enqueue_run
 from support_engine.repository import EventConflict, save_event
 from support_engine.schemas import SupportEvent, WebhookReceipt
 from support_engine.security import verify_signature
@@ -54,19 +56,25 @@ def create_app(sessions: sessionmaker | None = None) -> FastAPI:
     @app.post(
         "/webhooks/support",
         response_model=WebhookReceipt,
+        response_model_exclude_none=True,
+        status_code=202,
         dependencies=[Depends(verify_webhook)],
         description=(
             "Save a signed customer event and a pending run in one transaction. "
-            "Return HTTP 200 after commit. Repeated matching events return the same run. "
+            "Submit the saved run ID to RQ after commit, then return HTTP 202. "
+            "Repeated matching events reuse the run and queued job. "
             "Different content under the same event ID returns HTTP 409. "
-            "The run is not queued; Redis and worker execution are later steps."
+            "A queue failure returns HTTP 503 with the saved run ID. "
+            "Worker execution is a later step."
         ),
     )
     def receive_support_event(
-        event: SupportEvent, session: Annotated[Session, Depends(database_session)]
+        event: SupportEvent,
+        response: Response,
+        session: Annotated[Session, Depends(database_session)],
     ) -> WebhookReceipt:
         try:
-            return save_event(session, key_id, event)
+            receipt = save_event(session, key_id, event)
         except EventConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except SQLAlchemyError as exc:
@@ -74,6 +82,25 @@ def create_app(sessions: sessionmaker | None = None) -> FastAPI:
             raise HTTPException(
                 status_code=503, detail="Event storage failed. Retry with the same event ID."
             ) from exc
+
+        if receipt.run_status != "pending":
+            response.status_code = 200
+            return receipt
+        try:
+            job_id = enqueue_run(str(receipt.run_id))
+        except (RedisError, QueueSubmissionError) as exc:
+            logger.error("queue_submission_unconfirmed", extra={"category": type(exc).__name__})
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": (
+                        "Event saved, but queue submission is unconfirmed. "
+                        "Retry the same event ID and content."
+                    ),
+                    **receipt.model_dump(mode="json", exclude_none=True),
+                },
+            ) from exc
+        return receipt.model_copy(update={"status": "queued", "job_id": job_id})
 
     return app
 
