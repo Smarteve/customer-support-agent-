@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Smarteve/customer-support-agent-/actions/workflows/ci.yml/badge.svg)](https://github.com/Smarteve/customer-support-agent-/actions/workflows/ci.yml)
 
-This is an event-driven customer support learning project. We will build the backend one step at a time. The event simulator and first webhook receiver are implemented. The receiver validates input and saves the event and a pending run in PostgreSQL. After commit, the receiver submits the saved run ID to RQ in Redis. Workers and mock services remain planned.
+This is an event-driven customer support learning project. We will build the backend one step at a time. The event simulator and first webhook receiver are implemented. The receiver validates input and saves the event and a pending run in PostgreSQL. After commit, the receiver submits the saved run ID to RQ in Redis. A separate RQ worker logs the saved event type and updates the run status. Mock services remain planned.
 
 Keep all project files in [this repository](https://github.com/Smarteve/customer-support-agent-). Run commands from the checkout root. There is no nested `repository/` folder.
 
@@ -16,7 +16,7 @@ cp .env.example .env
 uv run python -m support_engine.simulator --help
 ```
 
-Start the receiver on port 8080:
+Start the receiver on port 8080 and the separate worker:
 
 ```bash
 docker compose up --build -d --wait
@@ -40,7 +40,7 @@ A successfully queued request returns HTTP 202:
 {"event_id": "demo_...", "status": "queued", "run_id": "...", "run_status": "pending", "job_id": "run-..."}
 ```
 
-This confirms the database commit and RQ submission. A matching duplicate reuses the run and queued job. The run stays `pending` because worker execution is the next milestone. Different content under the same sender and event ID returns HTTP 409.
+This confirms the database commit and RQ submission. A matching duplicate reuses the run and queued job. The worker changes the run from `pending` to `running`, then to `completed` after its test operation. The receipt is a submission snapshot; the worker can finish before you read it. Different content under the same sender and event ID returns HTTP 409.
 
 The simulator retains its `httpx-sse` client for the later progress-streaming step. This first receiver does not expose status or SSE routes.
 
@@ -60,6 +60,8 @@ Read the implementation in this order:
 4. `src/support_engine/repository.py`: one transaction saves the event and pending run.
 5. `src/support_engine/messaging.py`: `enqueue_run()` submits the saved run ID to RQ.
 6. `src/support_engine/api.py`: the route calls `save_event()` first, then `enqueue_run()`.
+7. `src/support_engine/worker.py`: a separate RQ process consumes JSON jobs.
+8. `src/support_engine/jobs.py`: the job claims the run and logs its saved event type.
 
 Invalid signatures or sender keys return HTTP 401. Invalid JSON or event fields return HTTP 422. Database or queue errors return HTTP 503. A queue error includes the saved run ID because the database transaction has already committed. See [queue submission and manual retry](docs/queue.md). `schema_version` must be integer 1. `event_type` must be `support.message_received`.
 

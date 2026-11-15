@@ -25,11 +25,15 @@ The project is being rebuilt step by step for learning. The previous backend imp
 - A static architecture explorer with a vertical main path and horizontal calls.
 - Docker targets and CI for the receiver, simulator, tests, and code checks.
 
+- A separate RQ worker service with JSON jobs and a Redis connection configured for blocking reads.
+- Conditional run claims prevent simultaneous processing of the same pending run. The test operation logs the saved event type and saves completed or failed.
+- Tests execute real RQ jobs in a separate worker process.
+
 ## Not implemented
 
-Status routes, the SSE server, worker, Pub/Sub publication, progress history, and mock enterprise APIs are not present. They will be built in later learning steps. LangChain, LangGraph, live models, refunds, and the React dashboard also remain planned.
+Status routes, the SSE server, Pub/Sub publication, progress history, and mock enterprise APIs are not present. They will be built in later learning steps. LangChain, LangGraph, live models, refunds, and the React dashboard also remain planned.
 
-The simulator submits an event and prints its saved run ID. Matching duplicates reuse that run. The run remains pending until a future worker starts it. The simulator prints the queue receipt and stops. The API port is 8080. The explorer uses host port 8081.
+The simulator submits an event and prints its saved run ID. Matching duplicates reuse that run. The worker claims a pending run and performs the test operation. Completed means that the test operation finished, not that a customer request was resolved. The simulator prints the queue receipt and stops. The API port is 8080. The explorer uses host port 8081.
 
 The proposed architecture remains in `docs/design.md`. Existing knowledge-base notes have not been regenerated or synchronized. Older implementation claims in those notes refer to the previous starter, not this working tree.
 
@@ -37,4 +41,4 @@ Removing the backend source does not delete existing Docker database volumes.
 
 The new PostgreSQL service uses the `event-store-data` volume. Previous starter volumes are not modified. See [database schema](database.md) for fields, constraints, and inspection commands.
 
-Queue submission is implemented in `messaging.enqueue_run`. The job entry point is reserved but execution is not implemented. No worker starts. See [queue submission and manual retry](queue.md).
+Queue submission is implemented in `messaging.enqueue_run`. The separate worker calls `jobs.process_run`. Failed jobs and runs left running after a process crash need manual recovery. See [queue submission and manual retry](queue.md).

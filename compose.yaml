@@ -66,6 +66,25 @@ services:
       retries: 15
     init: true
 
+  worker:
+    image: customer-support-simulator:dev
+    build:
+      context: .
+      target: runtime
+    command: [python, -m, support_engine.worker]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://support:support_dev@postgres:5432/support}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RQ_QUEUE: ${RQ_QUEUE:-support}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    init: true
+    stop_grace_period: 100s
+    restart: unless-stopped
+
   explorer:
     image: nginx:1.28-alpine
     volumes:

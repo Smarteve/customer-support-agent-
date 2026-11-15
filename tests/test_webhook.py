@@ -100,7 +100,9 @@ def test_invalid_signed_event_is_rejected(client, change):
 
 
 @pytest.mark.parametrize("offset", [-301, 301])
-def test_expired_and_future_request_signatures_are_rejected(client, offset):
+def test_expired_and_future_request_signatures_are_rejected(client, offset, monkeypatch):
+    now = time.time()
+    monkeypatch.setattr("support_engine.security.time.time", lambda: now)
     body = json.dumps(build_event("Hello", "customer_17")).encode()
     timestamp = str(int(time.time()) + offset)
     response = client.post("/webhooks/support", content=body, headers=headers(body, timestamp))
