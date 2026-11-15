@@ -7,8 +7,10 @@ from rq.exceptions import DuplicateJobError
 from rq.job import JobStatus
 from rq.serializers import JSONSerializer
 
+
 class QueueSubmissionError(RuntimeError):
     pass
+
 
 def redis_connection() -> Redis:
     """Producer connection. Worker blocking reads will need separate timeout settings."""
@@ -25,9 +27,6 @@ def support_queue(connection: Redis) -> Queue:
         connection=connection,
         serializer=JSONSerializer,
     )
-
-
-
 
 
 def enqueue_run(run_id: str) -> str:
