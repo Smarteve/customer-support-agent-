@@ -31,9 +31,11 @@ The project is being rebuilt step by step for learning. The previous backend imp
 
 - A `run_events` table with ordered progress for each run. Status changes and their progress rows commit together. Tests cover rollback when a progress insert fails.
 
+- `GET /runs/{run_id}` reads the saved run ID, status, and creation time. It requires an operator bearer token and handles missing runs and database errors.
+
 ## Not implemented
 
-Status routes, the SSE server, Pub/Sub publication, and mock enterprise APIs are not present. They will be built in later learning steps. LangChain, LangGraph, live models, refunds, and the React dashboard also remain planned.
+The SSE server, Pub/Sub publication, and mock enterprise APIs are not present. They will be built in later learning steps. LangChain, LangGraph, live models, refunds, and the React dashboard also remain planned.
 
 The simulator submits an event and prints its saved run ID. Matching duplicates reuse that run. The worker claims a pending run and performs the test operation. Completed means that the test operation finished, not that a customer request was resolved. The simulator prints the queue receipt and stops. The API port is 8080. The explorer uses host port 8081.
 

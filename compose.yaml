@@ -52,6 +52,7 @@ services:
       RQ_QUEUE: ${RQ_QUEUE:-support}
       WEBHOOK_KEY_ID: ${WEBHOOK_KEY_ID:-demo}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-local-webhook-secret-change-me}
+      OPERATOR_TOKEN: ${OPERATOR_TOKEN:-local-operator-token-change-me}
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -47,7 +47,7 @@ The index on `(run_id, id)` supports reading one run's history in order. IDs can
 
 The worker saves a status change and its progress row in the same transaction. If either write fails, both writes roll back. Duplicate execution of a claimed or finished run adds no progress rows. A completion event records `operation: log_event_type`. A failure event records the exception class under `error_type`. It does not copy raw exception messages or customer input.
 
-Migration `0002_run_events` creates the table. It does not invent history for existing runs. A process crash after the start transaction can leave a `running` run with only `run.started`. Recovery remains manual. Status routes, Pub/Sub notices, and SSE remain later steps.
+Migration `0002_run_events` creates the table. It does not invent history for existing runs. A process crash after the start transaction can leave a `running` run with only `run.started`. Recovery remains manual. The authenticated `GET /runs/{run_id}` route reads the saved status. Pub/Sub notices and SSE remain later steps.
 
 ## Save sequence
 
@@ -104,6 +104,6 @@ docker compose run --rm --no-deps migrate alembic check
 
 Database tests use PostgreSQL after migrations. Most test rows are rolled back. The simultaneous-request test commits its own records and deletes only those records during cleanup. Host-only test runs skip database tests unless `TEST_DATABASE_URL` points to migrated PostgreSQL.
 
-Redis and RQ now receive the run ID after commit. The worker saves progress history. Status routes and SSE server routes remain later steps. A pending run is saved work. It does not prove queue submission. The database/queue gap requires manual retry; there is no automatic dispatcher. See [queue submission](queue.md).
+Redis and RQ now receive the run ID after commit. The worker saves progress history. The run-status route is implemented. SSE server routes remain a later step. A pending run is saved work. It does not prove queue submission. The database/queue gap requires manual retry; there is no automatic dispatcher. See [queue submission](queue.md).
 
 References: [SQLAlchemy transactions](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html), [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html), [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html).

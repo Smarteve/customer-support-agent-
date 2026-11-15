@@ -42,7 +42,7 @@ A successfully queued request returns HTTP 202:
 
 This confirms the database commit and RQ submission. A matching duplicate reuses the run and queued job. The worker changes the run from `pending` to `running`, then to `completed` after its test operation. The receipt is a submission snapshot; the worker can finish before you read it. Different content under the same sender and event ID returns HTTP 409.
 
-The simulator retains its `httpx-sse` client for the later progress-streaming step. This first receiver does not expose status or SSE routes.
+The simulator retains its `httpx-sse` client for the later progress-streaming step. The API provides a run-status route. The SSE route remains planned.
 
 The expected API contract is:
 
@@ -50,7 +50,7 @@ The expected API contract is:
 | --- | --- |
 | `POST /webhooks/support` | Implemented: commit the input and pending run, enqueue its ID, then return HTTP 202. |
 | `GET /runs/{run_id}/events` | Planned: stream saved progress through SSE. |
-| `GET /runs/{run_id}` | Planned: return the final run status and response. |
+| `GET /runs/{run_id}` | Implemented: read the saved run ID, status, and creation time with operator authentication. |
 
 Read the implementation in this order:
 
@@ -65,7 +65,7 @@ Read the implementation in this order:
 
 Invalid signatures or sender keys return HTTP 401. Invalid JSON or event fields return HTTP 422. Database or queue errors return HTTP 503. A queue error includes the saved run ID because the database transaction has already committed. See [queue submission and manual retry](docs/queue.md). `schema_version` must be integer 1. `event_type` must be `support.message_received`.
 
-The `.env` file supplies `WEBHOOK_KEY_ID`, `WEBHOOK_SECRET`, and `OPERATOR_TOKEN`. The receiver and simulator must use matching webhook values. The operator token is only used by the future status/SSE client. Keep `.env` untracked. The script defaults to `http://localhost:8080`; `API_BASE_URL` or `--base-url` can select another address.
+The `.env` file supplies `WEBHOOK_KEY_ID`, `WEBHOOK_SECRET`, and `OPERATOR_TOKEN`. The receiver and simulator must use matching webhook values. The status route requires `Authorization: Bearer <OPERATOR_TOKEN>`. Compose passes this setting to the API. Keep `.env` untracked. The script defaults to `http://localhost:8080`; `API_BASE_URL` or `--base-url` can select another address.
 
 To run the simulator in Docker:
 
@@ -74,6 +74,19 @@ docker compose run --build --rm simulator
 ```
 
 The container targets `http://api:8080`. Start the API first with the command above. Set `SIMULATOR_API_BASE_URL` in `.env` to select another server. The script runs only one event per command.
+
+## Read run status
+
+Use the run ID from the webhook receipt. Replace both placeholders:
+
+```bash
+curl -H 'Authorization: Bearer YOUR_OPERATOR_TOKEN' \
+  http://localhost:8080/runs/YOUR_RUN_UUID
+```
+
+The response contains `run_id`, `status`, and `created_at`. It reads the current PostgreSQL record. It does not include customer input, progress history, or an agent response. `completed` currently means that the worker finished its test operation.
+
+Missing or invalid credentials return HTTP 401. An unknown run returns HTTP 404. An invalid UUID returns HTTP 422. A database failure returns HTTP 503. The route uses the single configured operator token; it does not provide tenant-specific access control. The simulator still stops after its queue receipt.
 
 ## Design explorer
 

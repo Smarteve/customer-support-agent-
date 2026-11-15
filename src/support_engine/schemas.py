@@ -35,3 +35,11 @@ class WebhookReceipt(BaseModel):
     run_id: UUID
     run_status: Literal["pending", "running", "completed", "failed", "escalated"]
     job_id: str | None = None
+
+
+class RunSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    status: Literal["pending", "running", "completed", "failed", "escalated"]
+    created_at: AwareDatetime
