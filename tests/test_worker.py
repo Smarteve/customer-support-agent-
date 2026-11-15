@@ -7,10 +7,10 @@ from uuid import uuid4
 
 import pytest
 from rq.job import JobStatus
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from support_engine.database import Event, Run
+from support_engine.database import Event, Run, RunEvent
 from support_engine.messaging import enqueue_run
 from support_engine.repository import save_event
 from support_engine.schemas import SupportEvent
@@ -50,6 +50,14 @@ def test_worker_processes_json_job(db_engine, rq_queue, missing_run):
             assert job.get_status() == JobStatus.FINISHED
             with Session(db_engine) as session:
                 assert session.get(Run, run_id).status == "completed"
+                history = list(
+                    session.scalars(
+                        select(RunEvent.event_type)
+                        .where(RunEvent.run_id == run_id)
+                        .order_by(RunEvent.id)
+                    )
+                )
+                assert history == ["run.started", "run.completed"]
             assert "event type" in result.stdout + result.stderr
     finally:
         if job is not None:

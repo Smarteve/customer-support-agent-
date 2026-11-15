@@ -1,6 +1,6 @@
-# First database schema
+# Database schema
 
-This step uses PostgreSQL to save incoming events and pending runs. SQLAlchemy maps the Python classes to database tables. Alembic applies versioned schema changes.
+This step uses PostgreSQL to save incoming events, run state, and worker progress. SQLAlchemy maps the Python classes to database tables. Alembic applies versioned schema changes.
 
 ## Events
 
@@ -29,7 +29,25 @@ The pair `(sender_key_id, event_id)` must be unique. A sender cannot reuse an ev
 | `status` | Current run status. The receiver creates `pending` runs. |
 | `created_at` | The timestamp set by PostgreSQL when the record is created. |
 
-The foreign key requires a saved event. A unique constraint on `runs.event_id` permits only one logical run per saved event. A check constraint permits `pending`, `running`, `completed`, `failed`, and `escalated`. This step only creates `pending` runs. No worker changes their status yet.
+The foreign key requires a saved event. A unique constraint on `runs.event_id` permits only one logical run per saved event. A check constraint permits `pending`, `running`, `completed`, `failed`, and `escalated`. The receiver creates `pending` runs. The worker changes a claimed run to `running`, then to `completed` or `failed`.
+
+## Run events
+
+`run_events` records worker progress. Each row belongs to one run.
+
+| Column | Purpose |
+| --- | --- |
+| `id` | PostgreSQL-generated integer primary key. Order one run's history by this value. |
+| `run_id` | Foreign key to `runs.id`. Deleting a run also deletes its progress rows. |
+| `event_type` | Currently `run.started`, `run.completed`, or `run.failed`. |
+| `created_at` | Timestamp set by PostgreSQL. |
+| `details` | Structured JSONB data. The default is an empty object. |
+
+The index on `(run_id, id)` supports reading one run's history in order. IDs can have gaps after rollback. Across different runs, ID order does not guarantee commit order.
+
+The worker saves a status change and its progress row in the same transaction. If either write fails, both writes roll back. Duplicate execution of a claimed or finished run adds no progress rows. A completion event records `operation: log_event_type`. A failure event records the exception class under `error_type`. It does not copy raw exception messages or customer input.
+
+Migration `0002_run_events` creates the table. It does not invent history for existing runs. A process crash after the start transaction can leave a `running` run with only `run.started`. Recovery remains manual. Status routes, Pub/Sub notices, and SSE remain later steps.
 
 ## Save sequence
 
@@ -59,12 +77,19 @@ Inspect the table definitions:
 ```bash
 docker compose exec postgres psql -U support -d support -c '\d events'
 docker compose exec postgres psql -U support -d support -c '\d runs'
+docker compose exec postgres psql -U support -d support -c '\d run_events'
 ```
 
 Inspect the saved input and work links:
 
 ```bash
 docker compose exec postgres psql -U support -d support -c "SELECT e.event_id, r.id AS run_id, r.status FROM events e JOIN runs r ON r.event_id = e.id ORDER BY r.created_at DESC LIMIT 10;"
+```
+
+Inspect recent progress. To read one run, filter by its `run_id` and order by `id`:
+
+```bash
+docker compose exec postgres psql -U support -d support -c "SELECT id, run_id, event_type, created_at, details FROM run_events ORDER BY id DESC LIMIT 20;"
 ```
 
 The Docker volume `event-store-data` preserves records across restarts. It is separate from the previous starter's `postgres-data` volume. Do not use `docker compose down --volumes` when you want to retain this data.
@@ -79,6 +104,6 @@ docker compose run --rm --no-deps migrate alembic check
 
 Database tests use PostgreSQL after migrations. Most test rows are rolled back. The simultaneous-request test commits its own records and deletes only those records during cleanup. Host-only test runs skip database tests unless `TEST_DATABASE_URL` points to migrated PostgreSQL.
 
-Redis and RQ now receive the run ID after commit. Workers, progress history, status routes, and SSE server routes remain later steps. A pending run is saved work. It does not prove queue submission. The database/queue gap requires manual retry; there is no automatic dispatcher. See [queue submission](queue.md).
+Redis and RQ now receive the run ID after commit. The worker saves progress history. Status routes and SSE server routes remain later steps. A pending run is saved work. It does not prove queue submission. The database/queue gap requires manual retry; there is no automatic dispatcher. See [queue submission](queue.md).
 
 References: [SQLAlchemy transactions](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html), [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html), [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html).

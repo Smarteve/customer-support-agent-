@@ -26,7 +26,7 @@ A successful request returns HTTP 202:
 
 `queued` describes submission. `pending` remains the saved run status until a worker starts. A run that is already beyond `pending` is not submitted again; a matching event then receives HTTP 200 with its saved receipt.
 
-The simulator prints the queue receipt and stops. A separate worker container consumes the queued jobs. `jobs.process_run` now implements the first worker operation. It claims a `pending` run with a conditional database update and commits `running`. It then loads the saved event, logs its type, and commits `completed`. Here, `completed` means that this test operation finished. It does not mean that a customer request was resolved.
+The simulator prints the queue receipt and stops. A separate worker container consumes the queued jobs. `jobs.process_run` now implements the first worker operation. It claims a `pending` run with a conditional database update and commits `running`. It then loads the saved event, logs its type, and commits `completed`. Each status change includes a `run_events` row in the same transaction: `run.started`, `run.completed`, or `run.failed`. See [the database schema](database.md). Here, `completed` means that this test operation finished. It does not mean that a customer request was resolved.
 
 The function skips runs whose status is not `pending`. It rejects an invalid UUID or a missing run. If the operation fails, it rolls back that transaction, saves `failed` in a new transaction, and raises the exception for RQ. If the process stops after the claim commits, the run can remain `running`. If the failure status cannot be saved, the run can also remain `running`. Recovery remains manual. No automatic retries are configured.
 

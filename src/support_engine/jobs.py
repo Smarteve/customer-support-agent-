@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from support_engine.database import Event, Run, make_engine
+from support_engine.database import Event, Run, RunEvent, make_engine
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ def process_run(run_id: str) -> None:
                         raise ValueError(f"Run {saved_id} does not exist")
                     logger.info("Skipping run %s: status is not pending", saved_id)
                     return
+                session.add(RunEvent(run_id=saved_id, event_type="run.started"))
             # The claim commits before work starts. A crash can leave the run running.
             try:
                 with session.begin():
@@ -39,10 +40,24 @@ def process_run(run_id: str) -> None:
                     session.execute(
                         update(Run).where(Run.id == saved_id).values(status="completed")
                     )
-            except Exception:
+                    session.add(
+                        RunEvent(
+                            run_id=saved_id,
+                            event_type="run.completed",
+                            details={"operation": "log_event_type"},
+                        )
+                    )
+            except Exception as exc:
                 # The failed work transaction has rolled back before this transaction.
                 with session.begin():
                     session.execute(update(Run).where(Run.id == saved_id).values(status="failed"))
+                    session.add(
+                        RunEvent(
+                            run_id=saved_id,
+                            event_type="run.failed",
+                            details={"error_type": type(exc).__name__},
+                        )
+                    )
                 raise
     finally:
         engine.dispose()

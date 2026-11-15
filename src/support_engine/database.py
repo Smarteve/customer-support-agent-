@@ -1,13 +1,16 @@
-"""Database connection and the first two persistent records."""
+"""Database connection and persistent input, run, and progress records."""
 
 import os
 from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Identity,
+    Index,
     String,
     UniqueConstraint,
     Uuid,
@@ -51,6 +54,17 @@ class Run(Base):
     event_id: Mapped[UUID] = mapped_column(ForeignKey("events.id"))
     status: Mapped[str] = mapped_column(String(20), server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RunEvent(Base):
+    __tablename__ = "run_events"
+    __table_args__ = (Index("ix_run_events_run_id_id", "run_id", "id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"))
+    event_type: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    details: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 def database_url() -> str:

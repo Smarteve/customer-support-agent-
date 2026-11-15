@@ -4,11 +4,12 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, event, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from support_engine import jobs
-from support_engine.database import Event, Run
+from support_engine.database import Event, Run, RunEvent
 from support_engine.repository import save_event
 from support_engine.schemas import SupportEvent
 from support_engine.simulator import build_event
@@ -31,6 +32,18 @@ def test_pending_run_completes(saved_run, db_sessions, caplog):
         jobs.process_run(str(saved_run))
     with db_sessions() as session:
         assert session.get(Run, saved_run).status == "completed"
+    jobs.process_run(str(saved_run))
+    with db_sessions() as session:
+        history = list(
+            session.scalars(
+                select(RunEvent).where(RunEvent.run_id == saved_run).order_by(RunEvent.id)
+            )
+        )
+        assert [row.event_type for row in history] == ["run.started", "run.completed"]
+        assert history[0].id < history[1].id
+        assert history[0].created_at is not None
+        assert history[0].details == {}
+        assert history[1].details == {"operation": "log_event_type"}
     assert "event type" in caplog.text
 
 
@@ -42,6 +55,7 @@ def test_non_pending_run_is_skipped(saved_run, db_sessions, status, caplog):
         jobs.process_run(str(saved_run))
     with db_sessions() as session:
         assert session.get(Run, saved_run).status == status
+        assert list(session.scalars(select(RunEvent).where(RunEvent.run_id == saved_run))) == []
     assert "Processing run" not in caplog.text
 
 
@@ -59,6 +73,13 @@ def test_work_failure_is_saved_and_raised(saved_run, db_sessions, monkeypatch):
         jobs.process_run(str(saved_run))
     with db_sessions() as session:
         assert session.get(Run, saved_run).status == "failed"
+        history = list(
+            session.scalars(
+                select(RunEvent).where(RunEvent.run_id == saved_run).order_by(RunEvent.id)
+            )
+        )
+        assert [row.event_type for row in history] == ["run.started", "run.failed"]
+        assert history[-1].details == {"error_type": "RuntimeError"}
 
 
 def test_invalid_id_does_not_open_database(monkeypatch):
@@ -93,7 +114,53 @@ def test_simultaneous_calls_process_once(db_engine, monkeypatch):
         assert len(processed) == 1
         with Session(db_engine) as session:
             assert session.get(Run, receipt.run_id).status == "completed"
+            history = list(
+                session.scalars(
+                    select(RunEvent.event_type)
+                    .where(RunEvent.run_id == receipt.run_id)
+                    .order_by(RunEvent.id)
+                )
+            )
+            assert history == ["run.started", "run.completed"]
     finally:
         with db_engine.begin() as connection:
             connection.execute(delete(Run).where(Run.id == receipt.run_id))
             connection.execute(delete(Event).where(Event.id == event_id))
+
+
+@pytest.mark.parametrize(
+    ("failed_type", "expected_status", "expected_history"),
+    [
+        ("run.started", "pending", []),
+        ("run.completed", "failed", ["run.started", "run.failed"]),
+        ("run.failed", "running", ["run.started"]),
+    ],
+)
+def test_progress_insert_failure_rolls_back_status(
+    saved_run, db_sessions, monkeypatch, failed_type, expected_status, expected_history
+):
+    def reject_progress(mapper, connection, target):
+        if target.event_type == failed_type:
+            raise SQLAlchemyError("injected progress insert failure")
+
+    def fail_work(*args, **kwargs):
+        raise RuntimeError("injected work failure")
+
+    if failed_type == "run.failed":
+        monkeypatch.setattr(jobs.logger, "info", fail_work)
+    event.listen(RunEvent, "before_insert", reject_progress)
+    try:
+        with pytest.raises(SQLAlchemyError, match="injected progress insert failure"):
+            jobs.process_run(str(saved_run))
+    finally:
+        event.remove(RunEvent, "before_insert", reject_progress)
+    with db_sessions() as session:
+        assert session.get(Run, saved_run).status == expected_status
+        history = list(
+            session.scalars(
+                select(RunEvent.event_type)
+                .where(RunEvent.run_id == saved_run)
+                .order_by(RunEvent.id)
+            )
+        )
+        assert history == expected_history
